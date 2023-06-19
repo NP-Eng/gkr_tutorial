@@ -105,7 +105,7 @@ mod tests {
         assert_eq!(pol.eval(Fq::from(2)), Fq::from(7));
     }
 
-    /* #[test]
+    #[test]
     fn test_univariate_from_multivariate() {
         let g = SparsePolynomial::from_coefficients_vec(
             3,
@@ -122,8 +122,8 @@ mod tests {
         let c = UnivariatePolynomial::from_sparse_multivariate(&g).unwrap();
         println!("{:?}", c.coefficients());
 
-        // expected vec!([Fq::from(3), Fq::from(4), Fq::from(13), Fq::zero(), Fq::from(7)]).to_vec()
-    } */
+        //assert_eq!(UnivariatePolynomial::from_sparse_multivariate(&g).unwrap(), UnivariatePolynomial::new(vec!([Fq::from(3), Fq::from(4), Fq::from(13), Fq::zero(), Fq::from(7)])));
+    }
 
     #[test]
     fn test_univariate_display() {

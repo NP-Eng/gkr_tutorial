@@ -121,6 +121,7 @@ impl<F: Field> UnivariatePolynomial<F> {
         }
 
         Self(coeffs[..i + 1].to_owned())
+        // TODO just change to Self(coeffs.to_owned())
     }
 
     pub fn degree(&self) -> usize {
@@ -144,6 +145,7 @@ impl<F: Field> UnivariatePolynomial<F> {
         res
 
     }
+    
     pub fn from_sparse_multivariate(pol: &SparsePolynomial<F, SparseTerm>) -> Option<Self> {
         match univariate_index(&pol) {
             Err(()) => None,

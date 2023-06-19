@@ -100,10 +100,10 @@ impl<F: Field> Verifier<F> {
 
         // MODIFY
         // in order to simulate the example on page 36 of Thaler's book, uncomment
-        /* let two = F::one() + F::one(); // the Field trait does not have a F::from(2) method, unlike some of its implementors
+        let two = F::one() + F::one(); // the Field trait does not have a F::from(2) method, unlike some of its implementors
         let three = two + F::one();
         let six = three + three;
-        let scalars = vec![two, three, six]; */
+        let scalars = vec![two, three, six];
 
         let mut scalars_iter = scalars.iter();
     
@@ -164,6 +164,8 @@ impl<F: Field> Verifier<F> {
             last_pol = new_pol;
 
         }
+
+        // TODO verifier could print here its last test value if verbose: otherwise never printed
 
         if last_pol.eval(last_sent_scalar) != self.g.evaluate(&scalars) {
             println!("Verifier found inconsistent evaluation in the oracle call: received univariate polynomial {last_pol} evaluates to {},\n  \
