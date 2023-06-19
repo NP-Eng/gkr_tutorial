@@ -1,16 +1,18 @@
-
-mod polynomial;
 mod parties;
+mod polynomial;
 mod tests;
+mod utils;
 
-use ark_ff::{fields::{Fp64, MontBackend, MontConfig}};
+use ark_ff::fields::{Fp64, MontBackend, MontConfig};
 
 use ark_poly::{
-    polynomial::multivariate::{SparsePolynomial, SparseTerm, Term}, DenseMVPolynomial,
+    polynomial::multivariate::{SparsePolynomial, SparseTerm, Term},
+    DenseMVPolynomial,
 };
 
-use parties::run_sumcheck_protocol;
+// use ark_crypto_primitives::
 
+use parties::run_sumcheck_protocol;
 
 #[derive(MontConfig)]
 #[modulus = "101"] // MODIFY
@@ -19,7 +21,6 @@ pub struct FqConfig;
 pub type Fq = Fp64<MontBackend<FqConfig, 1>>;
 
 fn main() {
-
     // MODIFY
     let pol = SparsePolynomial::from_coefficients_vec(
         3,
@@ -37,5 +38,4 @@ fn main() {
     } else {
         println!("Verifier aborted");
     }
-
 }

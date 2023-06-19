@@ -1,14 +1,14 @@
-
 #[cfg(test)]
 mod tests {
 
     use ark_ff::fields::{Fp64, MontBackend, MontConfig};
 
     use ark_poly::{
-        polynomial::multivariate::{SparsePolynomial, SparseTerm, Term}, DenseMVPolynomial,
+        polynomial::multivariate::{SparsePolynomial, SparseTerm, Term},
+        DenseMVPolynomial,
     };
-    
-    use crate::{polynomial::*, parties::run_sumcheck_protocol};
+
+    use crate::{parties::run_sumcheck_protocol, polynomial::*};
 
     #[derive(MontConfig)]
     #[modulus = "17"]
@@ -46,12 +46,10 @@ mod tests {
         );
 
         assert_eq!(specialise(&g, 2, Fq::from(3)), f);
-
     }
 
     #[test]
     fn test_univariate() {
-        
         let g = SparsePolynomial::from_coefficients_vec(
             3,
             vec![
@@ -78,7 +76,6 @@ mod tests {
 
     #[test]
     fn test_degree() {
-        
         let g = SparsePolynomial::from_coefficients_vec(
             3,
             vec![
@@ -98,9 +95,13 @@ mod tests {
 
     #[test]
     fn test_univariate_eval() {
-        let pol = UnivariatePolynomial::new(
-            &vec![Fq::from(1), Fq::from(8), Fq::from(0), Fq::from(3), Fq::from(0)]
-        );
+        let pol = UnivariatePolynomial::new(&vec![
+            Fq::from(1),
+            Fq::from(8),
+            Fq::from(0),
+            Fq::from(3),
+            Fq::from(0),
+        ]);
 
         assert_eq!(pol.eval(Fq::from(2)), Fq::from(7));
     }
@@ -127,17 +128,25 @@ mod tests {
 
     #[test]
     fn test_univariate_display() {
-        let p1 = UnivariatePolynomial::new(
-            &vec![Fq::from(1), Fq::from(8), Fq::from(0), Fq::from(3)]
-        );
+        let p1 =
+            UnivariatePolynomial::new(&vec![Fq::from(1), Fq::from(8), Fq::from(0), Fq::from(3)]);
 
-        let p2 = UnivariatePolynomial::new(
-            &vec![Fq::from(0), Fq::from(1), Fq::from(8), Fq::from(0), Fq::from(3)]
-        );
+        let p2 = UnivariatePolynomial::new(&vec![
+            Fq::from(0),
+            Fq::from(1),
+            Fq::from(8),
+            Fq::from(0),
+            Fq::from(3),
+        ]);
 
-        let p3 = UnivariatePolynomial::new(
-            &vec![Fq::from(0), Fq::from(0), Fq::from(1), Fq::from(8), Fq::from(0), Fq::from(3)]
-        );
+        let p3 = UnivariatePolynomial::new(&vec![
+            Fq::from(0),
+            Fq::from(0),
+            Fq::from(1),
+            Fq::from(8),
+            Fq::from(0),
+            Fq::from(3),
+        ]);
 
         assert_eq!(p1.to_string(), "3 * x^3 + 8 * x + 1");
         assert_eq!(p2.to_string(), "3 * x^4 + 8 * x^2 + 1 * x");
@@ -156,5 +165,4 @@ mod tests {
         );
         assert!(run_sumcheck_protocol(pol, true))
     }
-
 }
