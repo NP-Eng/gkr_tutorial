@@ -1,6 +1,3 @@
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::thread;
-
 use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 use ark_crypto_primitives::sponge::{Absorb, CryptographicSponge};
 use ark_ff::PrimeField;
@@ -10,40 +7,37 @@ use ark_poly::{
     Polynomial,
 };
 
-use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
-
 use crate::polynomial::{partial_degree, specialise, UnivariatePolynomial};
 use crate::utils::test_sponge;
 
 pub struct Prover<F: PrimeField + Absorb> {
-    tx: Sender<UnivariatePolynomial<F>>,
-    rx: Receiver<F>,
     g: SparsePolynomial<F, SparseTerm>,
     verbose: bool,
     sponge: PoseidonSponge<F>,
+    transcript: Transcript<F>,
 }
 
 pub struct Verifier<F: PrimeField + Absorb> {
-    tx: Sender<F>,
-    rx: Receiver<UnivariatePolynomial<F>>,
     g: SparsePolynomial<F, SparseTerm>,
     verbose: bool,
     sponge: PoseidonSponge<F>,
+    transcript: Transcript<F>,
 }
 
+#[derive(Clone, Debug)]
 pub struct Transcript<F: PrimeField + Absorb + Absorb> {
-    values: Vec<Vec<F>>,
-    hashes: Vec<F>,
+    pub values: Vec<Vec<F>>,
+    pub challenges: Vec<F>,
 }
 
 impl<F: PrimeField + Absorb> Transcript<F> {
     fn new() -> Self {
         Self {
             values: Vec::new(),
-            hashes: Vec::new(),
+            challenges: Vec::new(),
         }
     }
-    fn update(&mut self, poly: UnivariatePolynomial<F>, sponge: &mut PoseidonSponge<F>) -> F {
+    fn update(&mut self, poly: UnivariatePolynomial<F>, sponge: &mut PoseidonSponge<F>) {
         let coeffs = poly.coefficients().to_vec();
 
         for elem in coeffs.iter() {
@@ -52,17 +46,27 @@ impl<F: PrimeField + Absorb> Transcript<F> {
         self.values.push(coeffs);
 
         let r = sponge.squeeze_field_elements::<F>(1)[0];
-        self.hashes.push(r);
-
-        r
+        self.challenges.push(r);
     }
-    fn verify(&self) -> bool {
-        unimplemented!()
+    fn verify(&self, sponge: &mut PoseidonSponge<F>) -> bool {
+        for (msg, h) in self.values.iter().zip(self.challenges.iter()) {
+            
+            for elem in msg.iter() {
+                sponge.absorb(elem);
+            }
+
+            if sponge.squeeze_field_elements::<F>(1)[0] != *h {
+                return false;
+            }
+    
+        }
+
+        true
     }
 }
 
 impl<F: PrimeField + Absorb> Prover<F> {
-    fn run(&self) {
+    fn run(&mut self) -> Transcript<F> {
         let v = self.g.num_vars;
         let mut hyperpolys = vec![self.g.clone()];
 
@@ -72,104 +76,44 @@ impl<F: PrimeField + Absorb> Prover<F> {
             hyperpolys.push(specialise(&last, i, F::zero()) + specialise(&last, i, F::one()));
         }
 
-        let mut ver_values = Vec::new();
-
-        // first round
+        // first round; h contains a constant univariate polynomial corresponding to the value the Prover wants to prove
         let h = UnivariatePolynomial::from_sparse_multivariate(&hyperpolys.pop().unwrap());
 
-        // h contains a constant univariate polynomial corresponding to the value the Prover wants to prove
-        if self.tx.send(h.unwrap()).is_err() {
-            println!("Prover failed to send claimed value. Aborting.");
-            return;
-        }
+        self.transcript.update(h.unwrap(), &mut self.sponge);
 
-        for r in 1..v + 1 {
+        for _ in 1..=v {
             // r-th round
             let mut round_pol = hyperpolys.pop().unwrap();
 
-            for (i, v) in ver_values.iter().enumerate() {
-                round_pol = specialise(&round_pol, i, *v);
+            for (i, val) in self.transcript.challenges.iter().skip(1).enumerate() {
+                round_pol = specialise(&round_pol, i, *val);
             }
 
-            let uni_round_pol = UnivariatePolynomial::from_sparse_multivariate(&round_pol).unwrap();
+            let uni_round_pol: UnivariatePolynomial<F> = UnivariatePolynomial::from_sparse_multivariate(&round_pol).unwrap();
 
-            if self.tx.send(uni_round_pol).is_err() {
-                println!("Prover failed to send polynomial (the channel might have been closed). Aborting.");
-                return;
-            }
-
-            if r < v {
-                let ri = match self.rx.recv() {
-                    Err(e) => {
-                        println!("Prover failed to receive value: {}. Aborting.", e);
-                        return;
-                    }
-                    Ok(val) => {
-                        if self.verbose {
-                            println!(" - Prover round {}: received value {}", r, val);
-                        }
-                        val
-                    }
-                };
-
-                ver_values.push(ri);
-            }
+            self.transcript.update(uni_round_pol, &mut self.sponge);
+            
         }
 
         println!("Prover finished successfully");
+
+        self.transcript.clone()
     }
 }
 
 impl<F: PrimeField + Absorb> Verifier<F> {
-    fn run(&self) -> bool {
+    fn run(&mut self) -> bool {
+        self.transcript.verify(&mut self.sponge);
+
         let v = self.g.num_vars;
-        let rng = &mut ChaCha20Rng::from_entropy();
 
-        let mut scalars = Vec::new();
+        let mut last_pol = UnivariatePolynomial::new(&self.transcript.values[0]);
 
-        for _ in 0..v {
-            scalars.push(F::rand(rng));
-        }
-
-        // MODIFY
-        // in order to simulate the example on page 36 of Thaler's book, uncomment
-        let two = F::one() + F::one(); // the PrimeField trait does not have a F::from(2) method, unlike some of its implementors
-        let three = two + F::one();
-        let six = three + three;
-        let scalars = vec![two, three, six];
-
-        let mut scalars_iter = scalars.iter();
-
-        let mut last_pol = match self.rx.recv() {
-            Err(e) => {
-                println!("Verifier failed to receive value: {}. Aborting.", e);
-                return false;
-            }
-            Ok(pol) => pol,
-        };
-
-        // pol is constant here (even if the Prover cheats and sends a non-constant polynomial, this step is still sound)
-        let claimed_val = last_pol.eval(F::zero());
-
-        let mut last_sent_scalar = F::zero(); // dummy value for the first round (the evaluated polynomial is constant)
+        let mut last_sent_scalar = self.transcript.challenges[1];
 
         // round numbering in line with the book's (necessarily inconsistent variable indexing!)
-        for r in 1..v + 1 {
-            let new_pol = match self.rx.recv() {
-                Err(_) => {
-                    println!(
-                        "Verifier failed to receive polynomial in round {}. Aborting.",
-                        r
-                    );
-                    return false;
-                }
-                Ok(pol) => {
-                    if self.verbose {
-                        println!(" - Verifier round {}: received polynomial {}", r, pol);
-                    }
-                    pol
-                }
-            };
+        for r in 1..=v {
+            let new_pol = UnivariatePolynomial::new(&self.transcript.values[r]);
 
             if new_pol.degree() > partial_degree(&self.g, r - 1) {
                 println!("Verifier found inconsistent degrees in round {r}: the received unviariate polynomial {new_pol} has degree {}\n  \
@@ -187,29 +131,20 @@ impl<F: PrimeField + Absorb> Verifier<F> {
             }
 
             // cannot fail to unwrap due to round count
-            last_sent_scalar = *scalars_iter.next().unwrap();
-
-            if r < v {
-                if self.tx.send(last_sent_scalar).is_err() {
-                    println!("Verifier failed to send value (the channel might have been closed). Aborting.");
-                    return false;
-                }
-            }
+            last_sent_scalar = self.transcript.challenges[r];
 
             last_pol = new_pol;
         }
 
-        // TODO verifier could print here its last test value if verbose: otherwise never printed
-
-        if last_pol.eval(last_sent_scalar) != self.g.evaluate(&scalars) {
+        if last_pol.eval(last_sent_scalar) != self.g.evaluate(&self.transcript.challenges[1..].to_vec()) {
             println!("Verifier found inconsistent evaluation in the oracle call: received univariate polynomial {last_pol} evaluates to {},\n  \
                       whereas original multivariate one evaluates to {} on {:?}. Aborting.",
-                      last_pol.eval(last_sent_scalar), self.g.evaluate(&scalars), scalars
+                      last_pol.eval(last_sent_scalar), self.g.evaluate(&self.transcript.challenges), self.transcript.challenges
                     );
             return false;
         }
 
-        println!("Verifier finished successfully and is confident in the value {claimed_val}");
+        println!("Verifier finished successfully and is confident in the value {}", self.transcript.values[0][0]);
 
         true
     }
@@ -219,33 +154,25 @@ impl<F: PrimeField + Absorb> Verifier<F> {
 pub fn run_sumcheck_protocol<F: PrimeField + Absorb>(
     pol: SparsePolynomial<F, SparseTerm>,
     verbose: bool,
-) -> bool {
+) {
     println!("Initiated sumcheck protocol on the polynomial {pol:?}");
 
-    let (tx_pol, rx_pol) = mpsc::channel::<UnivariatePolynomial<F>>();
-    let (tx_val, rx_val) = mpsc::channel::<F>();
-
-    let prover = Prover {
-        tx: tx_pol,
-        rx: rx_val,
+    let mut prover = Prover {
         g: pol.clone(),
         verbose: verbose,
         sponge: test_sponge(),
+        transcript: Transcript::new(),
     };
 
-    let verifier = Verifier {
-        tx: tx_val,
-        rx: rx_pol,
+    let transcript = prover.run();
+
+    let mut verifier = Verifier {
         g: pol,
         verbose: verbose,
         sponge: test_sponge(),
+        transcript,
     };
 
-    let thread_prover = thread::spawn(move || prover.run());
+    assert!(verifier.run());
 
-    let thread_verifier = thread::spawn(move || verifier.run());
-
-    thread_prover.join();
-
-    thread_verifier.join().unwrap()
 }

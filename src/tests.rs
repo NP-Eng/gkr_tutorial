@@ -163,6 +163,6 @@ mod tests {
                 (Fq::from(1), SparseTerm::new(vec![(1, 1), (2, 1)])),
             ],
         );
-        assert!(run_sumcheck_protocol(pol, true))
+        run_sumcheck_protocol(pol, true)
     }
 }

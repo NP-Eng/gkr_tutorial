@@ -10,8 +10,6 @@ use ark_poly::{
     DenseMVPolynomial,
 };
 
-// use ark_crypto_primitives::
-
 use parties::run_sumcheck_protocol;
 
 #[derive(MontConfig)]
@@ -33,9 +31,5 @@ fn main() {
 
     let verbose = true; // MODIFY
 
-    if run_sumcheck_protocol(pol, verbose) {
-        println!("Verifier trusts!");
-    } else {
-        println!("Verifier aborted");
-    }
+    run_sumcheck_protocol(pol, verbose);
 }
