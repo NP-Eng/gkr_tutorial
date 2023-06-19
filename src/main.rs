@@ -2,6 +2,7 @@ mod parties;
 mod polynomial;
 mod tests;
 mod utils;
+mod gkr;
 
 use ark_ff::fields::{Fp64, MontBackend, MontConfig};
 
