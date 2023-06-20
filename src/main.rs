@@ -30,7 +30,5 @@ fn main() {
         ],
     );
 
-    let verbose = true; // MODIFY
-
-    run_sumcheck_protocol(pol, verbose);
+    run_sumcheck_protocol(pol);
 }

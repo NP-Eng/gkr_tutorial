@@ -2,6 +2,8 @@ use std::marker::PhantomData;
 
 use ark_ff::PrimeField;
 
+pub mod parties;
+
 pub struct Wiring {
     curr_index: usize,
     left: usize,

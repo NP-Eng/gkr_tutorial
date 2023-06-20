@@ -12,20 +12,40 @@ use crate::utils::test_sponge;
 
 pub struct Prover<F: PrimeField + Absorb> {
     g: SparsePolynomial<F, SparseTerm>,
-    verbose: bool,
     sponge: PoseidonSponge<F>,
     transcript: Transcript<F>,
 }
 
-pub struct Verifier<F: PrimeField + Absorb> {
-    g: SparsePolynomial<F, SparseTerm>,
-    verbose: bool,
+pub trait Oracle<F> {
+    fn divinate(&self, x: &[F]) -> F;
+}
+
+struct PolyOracle<F: PrimeField> {
+    poly: SparsePolynomial<F, SparseTerm>,
+}
+
+impl<F: PrimeField> PolyOracle<F> {
+    fn new(poly: SparsePolynomial<F, SparseTerm>) -> Self {
+        Self { poly }
+    }
+}
+
+impl<F: PrimeField> Oracle<F> for PolyOracle<F> {
+    fn divinate(&self, x: &[F]) -> F {
+        self.poly.evaluate(&x.to_vec())
+    }
+}
+
+pub struct Verifier<F: PrimeField + Absorb, O: Oracle<F>> {
+    degrees: Vec<usize>,
+    // oracle: fn(&[F]),
+    oracle: O,
     sponge: PoseidonSponge<F>,
     transcript: Transcript<F>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Transcript<F: PrimeField + Absorb + Absorb> {
+pub struct Transcript<F: PrimeField + Absorb> {
     pub values: Vec<Vec<F>>,
     pub challenges: Vec<F>,
 }
@@ -99,11 +119,11 @@ impl<F: PrimeField + Absorb> Prover<F> {
     }
 }
 
-impl<F: PrimeField + Absorb> Verifier<F> {
+impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
     fn run(&mut self) -> bool {
         self.transcript.verify(&mut self.sponge);
 
-        let v = self.g.num_vars;
+        let v = self.degrees.len();
 
         let mut last_pol = UnivariatePolynomial::new(&self.transcript.values[0]);
 
@@ -113,10 +133,10 @@ impl<F: PrimeField + Absorb> Verifier<F> {
         for r in 1..=v {
             let new_pol = UnivariatePolynomial::new(&self.transcript.values[r]);
 
-            if new_pol.degree() > partial_degree(&self.g, r - 1) {
+            if new_pol.degree() > self.degrees[r - 1] {
                 println!("Verifier found inconsistent degrees in round {r}: the received unviariate polynomial {new_pol} has degree {}\n  \
                           whereas the original one has degree {} in variable x_{}. Aborting.",
-                          new_pol.degree(), partial_degree(&self.g, r - 1), r - 1
+                          new_pol.degree(), self.degrees[r-1], r - 1
                         );
                 return false;
             }
@@ -134,12 +154,11 @@ impl<F: PrimeField + Absorb> Verifier<F> {
             last_pol = new_pol;
         }
 
-        if last_pol.eval(last_sent_scalar)
-            != self.g.evaluate(&self.transcript.challenges[1..].to_vec())
+        if last_pol.eval(last_sent_scalar) != self.oracle.divinate(&self.transcript.challenges[1..])
         {
             println!("Verifier found inconsistent evaluation in the oracle call: received univariate polynomial {last_pol} evaluates to {},\n  \
                       whereas original multivariate one evaluates to {} on {:?}. Aborting.",
-                      last_pol.eval(last_sent_scalar), self.g.evaluate(&self.transcript.challenges), self.transcript.challenges
+                      last_pol.eval(last_sent_scalar), self.oracle.divinate(&self.transcript.challenges[1..]), self.transcript.challenges
                     );
             return false;
         }
@@ -154,24 +173,22 @@ impl<F: PrimeField + Absorb> Verifier<F> {
 }
 
 // run the protocol and return true iff the verifier does not abort
-pub fn run_sumcheck_protocol<F: PrimeField + Absorb>(
-    pol: SparsePolynomial<F, SparseTerm>,
-    verbose: bool,
-) {
+pub fn run_sumcheck_protocol<F: PrimeField + Absorb>(pol: SparsePolynomial<F, SparseTerm>) {
     println!("Initiated sumcheck protocol on the polynomial {pol:?}");
 
     let mut prover = Prover {
         g: pol.clone(),
-        verbose: verbose,
         sponge: test_sponge(),
         transcript: Transcript::new(),
     };
 
     let transcript = prover.run();
 
+    let honest_degrees: Vec<usize> = (0..pol.num_vars).map(|i| partial_degree(&pol, i)).collect();
+
     let mut verifier = Verifier {
-        g: pol,
-        verbose: verbose,
+        degrees: honest_degrees,
+        oracle: PolyOracle::new(pol),
         sponge: test_sponge(),
         transcript,
     };
