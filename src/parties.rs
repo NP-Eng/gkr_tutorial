@@ -50,7 +50,6 @@ impl<F: PrimeField + Absorb> Transcript<F> {
     }
     fn verify(&self, sponge: &mut PoseidonSponge<F>) -> bool {
         for (msg, h) in self.values.iter().zip(self.challenges.iter()) {
-            
             for elem in msg.iter() {
                 sponge.absorb(elem);
             }
@@ -58,7 +57,6 @@ impl<F: PrimeField + Absorb> Transcript<F> {
             if sponge.squeeze_field_elements::<F>(1)[0] != *h {
                 return false;
             }
-    
         }
 
         true
@@ -89,10 +87,10 @@ impl<F: PrimeField + Absorb> Prover<F> {
                 round_pol = specialise(&round_pol, i, *val);
             }
 
-            let uni_round_pol: UnivariatePolynomial<F> = UnivariatePolynomial::from_sparse_multivariate(&round_pol).unwrap();
+            let uni_round_pol: UnivariatePolynomial<F> =
+                UnivariatePolynomial::from_sparse_multivariate(&round_pol).unwrap();
 
             self.transcript.update(uni_round_pol, &mut self.sponge);
-            
         }
 
         println!("Prover finished successfully");
@@ -136,7 +134,9 @@ impl<F: PrimeField + Absorb> Verifier<F> {
             last_pol = new_pol;
         }
 
-        if last_pol.eval(last_sent_scalar) != self.g.evaluate(&self.transcript.challenges[1..].to_vec()) {
+        if last_pol.eval(last_sent_scalar)
+            != self.g.evaluate(&self.transcript.challenges[1..].to_vec())
+        {
             println!("Verifier found inconsistent evaluation in the oracle call: received univariate polynomial {last_pol} evaluates to {},\n  \
                       whereas original multivariate one evaluates to {} on {:?}. Aborting.",
                       last_pol.eval(last_sent_scalar), self.g.evaluate(&self.transcript.challenges), self.transcript.challenges
@@ -144,7 +144,10 @@ impl<F: PrimeField + Absorb> Verifier<F> {
             return false;
         }
 
-        println!("Verifier finished successfully and is confident in the value {}", self.transcript.values[0][0]);
+        println!(
+            "Verifier finished successfully and is confident in the value {}",
+            self.transcript.values[0][0]
+        );
 
         true
     }
@@ -174,5 +177,4 @@ pub fn run_sumcheck_protocol<F: PrimeField + Absorb>(
     };
 
     assert!(verifier.run());
-
 }
