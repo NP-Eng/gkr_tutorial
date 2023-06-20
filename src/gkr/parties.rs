@@ -1,5 +1,6 @@
 use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, Absorb, CryptographicSponge};
 use ark_ff::PrimeField;
+use ark_poly::evaluations::multivariate::{DenseMultilinearExtension, MultilinearExtension};
 
 use super::{parties::Transcript as SC_Transcript, UniformCircuit};
 use crate::polynomial::UnivariatePolynomial;
@@ -55,7 +56,19 @@ impl<F: PrimeField + Absorb> Prover<F> {
     fn run(&mut self, x: Vec<F>) -> Transcript<F> {
         let w_0 = self.circuit.evaluate(x);
 
-        self.transcript.update(w_0, &mut self.sponge, 1);
+        let r_0 = self.transcript.update(w_0.clone(), &mut self.sponge, 1);
+        let w0_mle = DenseMultilinearExtension::from_evaluations_vec(
+            self.circuit.layers[0].num_vars,
+            w_0
+        );
+
+        let m = w0_mle.evaluate(&r_0); // TODO possibly unnecessary
+
+        let d = self.circuit.layers.len();
+        
+        for i in 0..d {
+            
+        }
 
         unimplemented!()
     }

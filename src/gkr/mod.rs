@@ -1,3 +1,4 @@
+use ark_poly::evaluations::multivariate::{DenseMultilinearExtension, MultilinearExtension};
 use std::marker::PhantomData;
 
 use ark_ff::PrimeField;
@@ -21,16 +22,29 @@ impl Wiring {
 }
 
 pub struct Layer {
-    // index: u64,
+    pub num_vars: usize,
     pub add: Vec<Wiring>,
     pub mul: Vec<Wiring>,
 }
 
 impl Layer {
     fn new(add: Vec<Wiring>, mul: Vec<Wiring>) -> Self {
-        Self { add, mul }
+        let num_vars = &add.len() + &mul.len();
+        Self { add, mul, num_vars }
     }
 }
+
+impl<F: PrimeField> Into<[DenseMultilinearExtension<F>; 2]> for Layer {
+    fn into(self) -> [DenseMultilinearExtension<F>; 2] {
+        unimplemented!()
+    }
+}
+
+// impl<F: PrimeField> From<Layer> for DenseMultilinearExtension<F> {
+//     fn happy() {
+//         println!("happ");
+//     }
+// }
 
 pub struct UniformCircuit<F> {
     layers: Vec<Layer>,
@@ -48,7 +62,10 @@ impl<F: PrimeField> UniformCircuit<F> {
     }
 
     // not as in the GKR protocol - plain circuit evaluation
-    fn evaluate(&self, x: Vec<F>) -> Vec<F> {
+    fn evaluate(&self, x: Vec<F>) -> Vec<Vec<F>> {
+
+        let mut evals = Vec::new();
+
         let mut last_layer = x;
 
         for layer in self.layers.iter().rev() {
@@ -74,10 +91,14 @@ impl<F: PrimeField> UniformCircuit<F> {
                 new_layer[*curr_index] = last_layer[*left] * last_layer[*right];
             }
 
+            evals.push(new_layer.clone());
+            
             last_layer = new_layer;
         }
 
-        last_layer
+        evals.push(last_layer);
+
+        evals
     }
 }
 
@@ -123,7 +144,7 @@ mod test {
         );
 
         assert_eq!(
-            computed_out,
+            computed_out[0],
             vec![36, 12]
                 .iter()
                 .map(|x| Fq::from(*x as u64))
@@ -131,5 +152,15 @@ mod test {
         );
 
         println!("{:?}", computed_out);
+    }
+
+    #[test]
+    fn layer_to_mles() {
+        let mul0_0 = Wiring::new(0, 0, 1);
+        let mul0_1 = Wiring::new(1, 2, 3);
+
+        let layer_0 = Layer::new(Vec::new(), vec![mul0_0, mul0_1]); 
+
+        let mles: [DenseMultilinearExtension<Fq>; 2] = layer_0.into();
     }
 }
