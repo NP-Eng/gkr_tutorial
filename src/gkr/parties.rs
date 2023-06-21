@@ -65,9 +65,33 @@ impl<F: PrimeField + Absorb> Prover<F> {
         let m = w0_mle.evaluate(&r_0); // TODO possibly unnecessary
 
         let d = self.circuit.layers.len();
-        
+
+
+        f(x, y) = f1(x) + f2(y);
+        mle(f);
+
+        eval_list = Vec::new();
+
+        for c in 0..2**k0 {
+            for b 0..2**k0 {
+                
+            }
+        }
+    
+        w_i_b_plus_w_i_c = DenseMultilinearExtension::from_evaluations_vec(
+            add_i_ri 
+        )
+
         for i in 0..d {
-            
+
+            // compute wi+1
+            // w_iplus1_mle = DenseMultilinearExtension::from_evaluations_vec(w_iplus1) + 
+
+            let f_i_ri = 
+                DenseMultilinearExtension::from_evaluations_vec(add_i_ri) *
+                    w_iplus1_mle + w_iplus1_mle
+
+
         }
 
         unimplemented!()

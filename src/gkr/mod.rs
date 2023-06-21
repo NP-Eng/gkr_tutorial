@@ -36,15 +36,11 @@ impl Layer {
 
 impl<F: PrimeField> Into<[DenseMultilinearExtension<F>; 2]> for Layer {
     fn into(self) -> [DenseMultilinearExtension<F>; 2] {
+        let add_mle = DenseMultilinearExtension::from_evaluations_vec(self.num_vars, self.add);
+        let mul_mle = DenseMultilinearExtension::from_evaluations_vec(self.num_vars, self.mul);
         unimplemented!()
     }
 }
-
-// impl<F: PrimeField> From<Layer> for DenseMultilinearExtension<F> {
-//     fn happy() {
-//         println!("happ");
-//     }
-// }
 
 pub struct UniformCircuit<F> {
     layers: Vec<Layer>,

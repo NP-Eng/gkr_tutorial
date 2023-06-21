@@ -174,6 +174,12 @@ impl<F: Field> UnivariatePolynomial<F> {
             }
         }
     }
+    fn interpolate(coords: &[(F, F)]) -> Self {
+        
+        //let linear = map(x)
+        //for i in 
+        unimplemented!();
+    }
 }
 
 impl<F: Field> fmt::Display for UnivariatePolynomial<F> {
