@@ -1,6 +1,5 @@
 // mod gkr;
 mod parties;
-mod polynomial;
 // mod tests;
 mod utils;
 

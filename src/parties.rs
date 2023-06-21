@@ -12,7 +12,6 @@ use ark_poly::{
     DenseMultilinearExtension, DenseUVPolynomial, MultilinearExtension, SparseMultilinearExtension,
 };
 
-use crate::polynomial::{partial_degree, specialise};
 use crate::utils::{interpolate_uni_poly, test_sponge, Transcript};
 
 pub struct Prover<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> {
