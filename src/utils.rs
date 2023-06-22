@@ -67,6 +67,15 @@ impl<F: PrimeField + Absorb> Transcript<F> {
     }
 }
 
+// pub(crate) fn interpolation_wrapper<F: PrimeField>(p_i: &[F], eval_at: F) -> F {
+//     let idx = eval_at.into_bigint().into(u64);
+//     if eval_at < F::from(p_i.len() as u64 )
+//         {p_i[eval_at as u64 as usize]}
+//         else 
+//         {interpolate_uni_poly(p_i, F)}
+// }
+
+
 /// interpolate a uni-variate degree-`p_i.len()-1` polynomial and evaluate this
 /// polynomial at `eval_at`:
 ///   \sum_{i=0}^len p_i * (\prod_{j!=i} (eval_at - j)/(i-j))
