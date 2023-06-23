@@ -55,12 +55,12 @@ pub struct Verifier<F: PrimeField + Absorb, O: Oracle<F>> {
 }
 
 pub(crate) fn to_le_indices(v: usize) -> Vec<usize> {
-        // preparing index conversion big-endian -> little-endian
-        // we do this because `DenseMultilinearExtension::from_evaluations_slice` expects little-endian notation for the evaluation slice
-        (0usize..(1 << v))
-            .into_iter()
-            .map(|i| i.reverse_bits() >> (usize::BITS as usize - v))
-            .collect()
+    // preparing index conversion big-endian -> little-endian
+    // we do this because `DenseMultilinearExtension::from_evaluations_slice` expects little-endian notation for the evaluation slice
+    (0usize..(1 << v))
+        .into_iter()
+        .map(|i| i.reverse_bits() >> (usize::BITS as usize - v))
+        .collect()
 }
 
 impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
@@ -73,14 +73,11 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
             g.num_vars()
         );
 
-
-
         Self {
             f,
             g,
             sponge,
             transcript: Transcript::new(),
-            
         }
     }
     fn sumcheck_prod(&mut self, f: &MLE, g: &MLE) {
@@ -202,7 +199,6 @@ pub(crate) fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
     f_3: &MLE,
     g: &[F],
 ) -> Vec<F> {
-    
     let v = f_3.num_vars();
     let le_indices_f1 = to_le_indices(f_1.num_vars);
     let le_indices_f3 = to_le_indices(v);
@@ -219,11 +215,10 @@ pub(crate) fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
     }
 
     let mut ahg = vec![F::zero(); 1 << v];
-    println!("f1: {:?}", f_1.evaluations);
+
     for (idx_le, val) in f_1.evaluations.iter() {
         let idx = le_indices_f1[*idx_le];
         let (z, x, y) = usize_to_zxy(idx, v);
-        println!("idx: {}, x: {}, y: {}, z: {}", idx, x, y, z);
         ahg[x] += table_g[z] * val * f_3.to_evaluations()[le_indices_f3[y]];
     }
 
