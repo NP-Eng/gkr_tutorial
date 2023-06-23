@@ -75,7 +75,7 @@ fn main() {
         Fq::from(5)
     );
 
-    run_sumcheck_protocol(f, g); // expected: 48 */
+    // run_sumcheck_protocol(f, g); // expected: 48 */
     println!("{:?}", to_le_indices(6));
 }
 
@@ -83,7 +83,7 @@ mod tests {
     use ark_poly::{DenseMultilinearExtension, SparseMultilinearExtension};
     // use ark_bls12_381::Fq;
     use super::Fq;
-    use crate::{parties::initialise_phase_1, utils::usize_to_zxy};
+    use crate::{parties::{initialise_phase_1, initialise_phase_2}, utils::usize_to_zxy};
     use ark_std::UniformRand;
 
     #[test]
@@ -294,6 +294,63 @@ mod tests {
             Fq::from(0u64),
             Fq::from(78u64),
             Fq::from(91u64),
+        ];
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn tests_phase_2_max() {
+        let mut test_rng = ark_std::test_rng();
+        // f1 = x1 * (1 - 10 * g1 * g2 + 5 + 4 * x2 + y1 + g2 * y2 - 7 * y2 * x2)
+        let points = vec![
+            (4, Fq::from(6_u64)),
+            (5, Fq::from(6_u64)),
+            (6, Fq::from(6_u64)),
+            (7, Fq::from(97_u64)),
+            (12, Fq::from(10_u64)),
+            (13, Fq::from(10_u64)),
+            (14, Fq::from(10_u64)),
+            (20, Fq::from(7_u64)),
+            (21, Fq::from(7_u64)),
+            (22, Fq::from(7_u64)),
+            (23, Fq::from(98_u64)),
+            (28, Fq::from(11_u64)),
+            (29, Fq::from(11_u64)),
+            (30, Fq::from(11_u64)),
+            (31, Fq::from(1_u64)),
+            (36, Fq::from(6_u64)),
+            (37, Fq::from(6_u64)),
+            (38, Fq::from(7_u64)),
+            (39, Fq::from(98_u64)),
+            (44, Fq::from(3_u64)),
+            (45, Fq::from(3_u64)),
+            (46, Fq::from(4_u64)),
+            (47, Fq::from(95_u64)),
+            (52, Fq::from(7_u64)),
+            (53, Fq::from(7_u64)),
+            (54, Fq::from(8_u64)),
+            (55, Fq::from(99_u64)),
+            (60, Fq::from(4_u64)),
+            (61, Fq::from(4_u64)),
+            (62, Fq::from(5_u64)),
+            (63, Fq::from(96_u64)),
+        ];
+
+        // asssume |x| = |y| = 2, so f1 would be a 6-variate
+        // |z| = 2
+        let f1 = SparseMultilinearExtension::from_evaluations(6, &points);
+
+        let g = vec![Fq::from(80u64), Fq::from(6u64)];
+        let u = vec![Fq::from(27u64), Fq::from(12u64)];
+
+        let actual = initialise_phase_2(&f1, &g, &u);
+
+        // computed by hand
+        let expected = vec![
+            (0, Fq::from(27_u64)), 
+            (1, Fq::from(42_u64)), 
+            (2, Fq::from(54_u64)), 
+            (3, Fq::from(69_u64)),
         ];
         assert_eq!(actual, expected);
     }
