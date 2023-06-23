@@ -1,16 +1,10 @@
 use std::marker::PhantomData;
 
 use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
-use ark_crypto_primitives::sponge::{Absorb, CryptographicSponge, self};
+use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
 
-use ark_poly::{
-    polynomial::multivariate::{SparsePolynomial, SparseTerm},
-    Polynomial,
-};
-use ark_poly::{
-    DenseMultilinearExtension, DenseUVPolynomial, MultilinearExtension, SparseMultilinearExtension,
-};
+use ark_poly::MultilinearExtension;
 
 use crate::utils::{interpolate_uni_poly, test_sponge, Transcript};
 
@@ -83,18 +77,22 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
         }
 
     }
-    fn sumcheck(&mut self, pol: DenseMultilinearExtension<F>) {
-        let v = pol.num_vars();
+    fn sumcheck_prod(&mut self, f: &MLE, g: &MLE) {
+    //fn sumcheck_prod(&mut self) {
 
-        let mut a = pol.to_evaluations();
+        let v = self.f.num_vars();
+
+        let mut af = f.to_evaluations();
+        let mut ag = g.to_evaluations();
 
         // first round; claimed_value contains the value the Prover wants to prove
-        let claimed_value = a.iter().sum();
+        let claimed_value = (0..1 << v).map(|i| af[i] * ag[i]).sum();
 
         self.transcript
             .update(&[claimed_value], &mut self.sponge);
 
-        let mut pol_values = vec![vec![F::zero(); 1 << (v - 1)];3];
+        let mut f_values = vec![vec![F::zero(); 1 << (v - 1)];3];
+        let mut g_values = vec![vec![F::zero(); 1 << (v - 1)];3];
 
         for i in 1..=v {
             // i-th round
@@ -103,34 +101,34 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
             let le_indices = &self.le_indices;
 
             for b in 0..(1 << (v - i)) {
-                pol_values[0][b] = a[le_indices[b]];
-                pol_values[1][b] = a[le_indices[b + (1 << (v - i))]];
-                pol_values[2][b] = -a[le_indices[b]] + a[le_indices[b + (1 << (v - i))]] * F::from(2u64);
+                f_values[0][b] = af[le_indices[b]];
+                f_values[1][b] = af[le_indices[b + (1 << (v - i))]];
+                f_values[2][b] = -af[le_indices[b]] + af[le_indices[b + (1 << (v - i))]] * F::from(2u64);
+
+                g_values[0][b] = ag[le_indices[b]];
+                g_values[1][b] = ag[le_indices[b + (1 << (v - i))]];
+                g_values[2][b] = -ag[le_indices[b]] + ag[le_indices[b + (1 << (v - i))]] * F::from(2u64);
             }
 
-            // Algorithm 2
+            // Algorithm 3
             let values: Vec<F> = (0..=2)
-                .map(|t| pol_values[t].iter().take(1 << (v - i)).sum())
-                .collect();
+                .map(|t| ((0..1 << (v - i)).map(|b| f_values[t][b] * g_values[t][b])).sum()).collect();
 
             let r_i = self.transcript.update(&values, &mut self.sponge);
 
             // Algorithm 1, part 2
             for b in 0..(1 << (v - i)) {
-                a[le_indices[b]] =
-                    a[le_indices[b]] * (F::one() - r_i) + a[le_indices[b + (1 << (v - i))]] * r_i;
+                af[le_indices[b]] =
+                    af[le_indices[b]] * (F::one() - r_i) + af[le_indices[b + (1 << (v - i))]] * r_i;
+                ag[le_indices[b]] =
+                    ag[le_indices[b]] * (F::one() - r_i) + ag[le_indices[b + (1 << (v - i))]] * r_i;    
             }
         }
     }
 
     fn run(&mut self) -> Transcript<F> {
 
-        let v = self.f.num_vars();
-        let f_evals = self.f.to_evaluations();
-        let g_evals = self.g.to_evaluations();
-        let fg_evals = (0..1 << v).map(|i| f_evals[i] * g_evals[i]).collect();
-
-        self.sumcheck(DenseMultilinearExtension::from_evaluations_vec(v, fg_evals));
+        self.sumcheck_prod(&self.f.clone(), &self.g.clone());
 
         println!("Prover finished successfully");
 
@@ -155,8 +153,6 @@ impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
             let new_pol_evals = self.transcript.values[r].clone();
             let claimed_sum = new_pol_evals[0] + new_pol_evals[1];
             let new_pol = Vec::from(&new_pol_evals[..]);
-
-            println!("EVAL AT {}", last_sent_scalar);
 
             if claimed_sum != interpolate_uni_poly(&last_pol, last_sent_scalar) {
                 println!("Verifier found inconsistent evaluation in round {r}: received univariate polynomial is f_n = {new_pol:?},\n  \
@@ -210,3 +206,4 @@ pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F
 
     assert!(verifier.run());
 }
+
