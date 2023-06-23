@@ -1,8 +1,7 @@
 #[cfg(test)]
 mod tests {
     use ark_poly::{DenseMultilinearExtension, SparseMultilinearExtension};
-    use super::Fq;
-    use crate::{parties::{initialise_phase_1, initialise_phase_2, precompute}, utils::usize_to_zxy};
+    use crate::{parties::{initialise_phase_1, initialise_phase_2, precompute}, utils::usize_to_zxy, Fq};
     use ark_std::UniformRand;
 
     #[test]
@@ -75,8 +74,8 @@ mod tests {
         // computed by hand
         let expected = vec![
             Fq::from(6u64),
-            Fq::from(3u64),
             Fq::from(0u64),
+            Fq::from(3u64),
             Fq::from(0u64),
         ];
         assert_eq!(actual, expected);
@@ -110,8 +109,8 @@ mod tests {
         // computed by hand
         let expected = vec![
             Fq::from(10u64),
-            Fq::from(1u64),
             Fq::from(0u64),
+            Fq::from(1u64),
             Fq::from(0u64),
         ];
         assert_eq!(actual, expected);
@@ -144,8 +143,8 @@ mod tests {
         // computed by hand
         let expected = vec![
             Fq::from(20u64),
-            Fq::from(2u64),
             Fq::from(0u64),
+            Fq::from(2u64),
             Fq::from(0u64),
         ];
         assert_eq!(actual, expected);
@@ -210,8 +209,8 @@ mod tests {
         // computed by hand
         let expected = vec![
             Fq::from(0u64),
-            Fq::from(0u64),
             Fq::from(78u64),
+            Fq::from(0u64),
             Fq::from(91u64),
         ];
         assert_eq!(actual, expected);
@@ -267,8 +266,8 @@ mod tests {
         // computed by hand
         let expected = vec![
             Fq::from(27_u64), 
-            Fq::from(42_u64),
             Fq::from(54_u64),
+            Fq::from(42_u64),
             Fq::from(69_u64),
         ];
         

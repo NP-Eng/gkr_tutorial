@@ -99,7 +99,6 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
             // i-th round
 
             // Algorithm 1
-
             for b in 0..(1 << (v - i)) {
                 f_values[0][b] = A_f[le_indices[b]];
                 f_values[1][b] = A_f[le_indices[b + (1 << (v - i))]];
@@ -129,20 +128,21 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
         }
     }
 
-    fn run(&mut self) -> Transcript<F> {
+    fn run(&mut self, g: &[F]) -> Transcript<F> {
         // Algorithm 6. Sumcheck GKR
-        // TODO what is g, u?
+        let mut A_h = initialise_phase_1(&self.f1, &self.f3, g);
 
-        let g = vec![F::one(); 1 << self.f2.num_vars()];
-        let u = vec![F::one(); 1 << self.f2.num_vars()];
-        let mut A_h = initialise_phase_1(&self.f1, &self.f3, &g);
-
+        // phase 1
         let mut A_f2 = self.f2.to_evaluations();
         let mut A_f3 = self.f3.to_evaluations();
 
-        let mut A_f1 = initialise_phase_2(&self.f1, &g, &u);
-
         self.sumcheck_prod(&mut A_h, &mut A_f2, self.f2.num_vars());
+
+        // phase 2
+        let u = &self.transcript.challenges[..];
+
+        let mut A_f1 = initialise_phase_2::<F>(&self.f1, g, u);
+
         self.sumcheck_prod(&mut A_f1, &mut A_f3, self.f2.num_vars());
 
         println!("Prover finished successfully");
@@ -241,7 +241,7 @@ pub(crate) fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
     for (idx_le, val) in f_1.evaluations.iter() {
         let idx = le_indices_f1[*idx_le];
         let (z, x, y) = usize_to_zxy(idx, v);
-        ahg[x] += table_g[z] * val * f_3.to_evaluations()[le_indices_f3[y]];
+        ahg[le_indices_f3[x]] += table_g[z] * val * f_3.to_evaluations()[le_indices_f3[y]];
     }
 
     ahg
@@ -253,7 +253,8 @@ pub(crate) fn initialise_phase_2<F: PrimeField>(
     u: &[F],
 ) -> Vec<F> {
     let v = g.len();
-    let le_indices = to_le_indices(f_1.num_vars);
+    let le_indices_f_1 = to_le_indices(f_1.num_vars);
+    let le_indices_g = to_le_indices(g.len());
 
     let table_g = precompute(g);
     let table_u = precompute(u);
@@ -261,9 +262,9 @@ pub(crate) fn initialise_phase_2<F: PrimeField>(
     let mut af1 = vec![F::zero(); 1 << v];
 
     for (idx_le, val) in f_1.evaluations.iter() {
-        let idx = le_indices[*idx_le];
+        let idx = le_indices_f_1[*idx_le];
         let (z, x, y) = usize_to_zxy(idx, v);
-        af1[y] += table_g[z] * table_u[x] * val;
+        af1[le_indices_g[y]] += table_g[z] * table_u[x] * val;
     }
 
     af1
@@ -280,8 +281,9 @@ pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F
     // );
 
     let mut prover = Prover::new(f1.clone(), f2.clone(), f3.clone(), test_sponge());
+    let g = vec![F::one(); 1 << f2.num_vars()];
 
-    let transcript = prover.run();
+    let transcript = prover.run(&g);
 
     let mut verifier = Verifier {
         oracle: PolyOracle::new(f1, f2, f3), // TODO: decide if passing & is enough
