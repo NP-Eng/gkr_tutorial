@@ -67,14 +67,19 @@ impl<F: PrimeField + Absorb> Transcript<F> {
     }
 }
 
-// pub(crate) fn interpolation_wrapper<F: PrimeField>(p_i: &[F], eval_at: F) -> F {
-//     let idx = eval_at.into_bigint().into(u64);
-//     if eval_at < F::from(p_i.len() as u64 )
-//         {p_i[eval_at as u64 as usize]}
-//         else 
-//         {interpolate_uni_poly(p_i, F)}
-// }
+// separate a bit string represented as a usize into three values,
+// the last of which correspond to 
+#[inline]
+pub fn usize_to_zxy(idx: usize, v: usize) -> (usize, usize, usize) {
+    let vp =  1 << v;
 
+    let y = idx % vp;
+    let idx_zx = idx / vp;
+    let x = idx_zx % vp;
+    let z = idx_zx / vp;
+
+    (z, x, y)
+}
 
 /// interpolate the *unique* univariate polynomial of degree *at most* 
 /// p_i.len()-1 passing through the y-values in p_i at x = 0,..., p_i.len()-1 

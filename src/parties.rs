@@ -4,16 +4,15 @@ use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
 
-use ark_poly::MultilinearExtension;
+use ark_poly::{MultilinearExtension, SparseMultilinearExtension};
 
-use crate::utils::{interpolate_uni_poly, test_sponge, Transcript};
+use crate::utils::{interpolate_uni_poly, test_sponge, usize_to_zxy, Transcript};
 
 pub struct Prover<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> {
     f: MLE,
     g: MLE,
     sponge: PoseidonSponge<F>,
     transcript: Transcript<F>,
-    le_indices: Vec<usize>
 }
 
 pub trait Oracle<F> {
@@ -55,30 +54,37 @@ pub struct Verifier<F: PrimeField + Absorb, O: Oracle<F>> {
     transcript: Transcript<F>,
 }
 
-impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
-
-    fn new(f: MLE, g: MLE, sponge: PoseidonSponge<F>) -> Self {
-        let v = f.num_vars();
-        assert_eq!(v, g.num_vars(), "number of variables mismatched: {v} vs {}", g.num_vars());
-
+pub(crate) fn to_le_indices(v: usize) -> Vec<usize> {
         // preparing index conversion big-endian -> little-endian
         // we do this because `DenseMultilinearExtension::from_evaluations_slice` expects little-endian notation for the evaluation slice
-        let le_indices: Vec<usize> = (0usize..(1 << v))
+        (0usize..(1 << v))
             .into_iter()
             .map(|i| i.reverse_bits() >> (usize::BITS as usize - v))
-            .collect();
+            .collect()
+}
+
+impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
+    fn new(f: MLE, g: MLE, sponge: PoseidonSponge<F>) -> Self {
+        let v = f.num_vars();
+        assert_eq!(
+            v,
+            g.num_vars(),
+            "number of variables mismatched: {v} vs {}",
+            g.num_vars()
+        );
+
+
 
         Self {
             f,
             g,
             sponge,
             transcript: Transcript::new(),
-            le_indices 
+            
         }
-
     }
     fn sumcheck_prod(&mut self, f: &MLE, g: &MLE) {
-    //fn sumcheck_prod(&mut self) {
+        //fn sumcheck_prod(&mut self) {
 
         let v = self.f.num_vars();
 
@@ -88,31 +94,33 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
         // first round; claimed_value contains the value the Prover wants to prove
         let claimed_value = (0..1 << v).map(|i| af[i] * ag[i]).sum();
 
-        self.transcript
-            .update(&[claimed_value], &mut self.sponge);
+        self.transcript.update(&[claimed_value], &mut self.sponge);
 
-        let mut f_values = vec![vec![F::zero(); 1 << (v - 1)];3];
-        let mut g_values = vec![vec![F::zero(); 1 << (v - 1)];3];
+        let mut f_values = vec![vec![F::zero(); 1 << (v - 1)]; 3];
+        let mut g_values = vec![vec![F::zero(); 1 << (v - 1)]; 3];
 
+        let le_indices = to_le_indices(v);
         for i in 1..=v {
             // i-th round
 
             // Algorithm 1
-            let le_indices = &self.le_indices;
 
             for b in 0..(1 << (v - i)) {
                 f_values[0][b] = af[le_indices[b]];
                 f_values[1][b] = af[le_indices[b + (1 << (v - i))]];
-                f_values[2][b] = -af[le_indices[b]] + af[le_indices[b + (1 << (v - i))]] * F::from(2u64);
+                f_values[2][b] =
+                    -af[le_indices[b]] + af[le_indices[b + (1 << (v - i))]] * F::from(2u64);
 
                 g_values[0][b] = ag[le_indices[b]];
                 g_values[1][b] = ag[le_indices[b + (1 << (v - i))]];
-                g_values[2][b] = -ag[le_indices[b]] + ag[le_indices[b + (1 << (v - i))]] * F::from(2u64);
+                g_values[2][b] =
+                    -ag[le_indices[b]] + ag[le_indices[b + (1 << (v - i))]] * F::from(2u64);
             }
 
             // Algorithm 3
             let values: Vec<F> = (0..=2)
-                .map(|t| ((0..1 << (v - i)).map(|b| f_values[t][b] * g_values[t][b])).sum()).collect();
+                .map(|t| ((0..1 << (v - i)).map(|b| f_values[t][b] * g_values[t][b])).sum())
+                .collect();
 
             let r_i = self.transcript.update(&values, &mut self.sponge);
 
@@ -121,13 +129,12 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
                 af[le_indices[b]] =
                     af[le_indices[b]] * (F::one() - r_i) + af[le_indices[b + (1 << (v - i))]] * r_i;
                 ag[le_indices[b]] =
-                    ag[le_indices[b]] * (F::one() - r_i) + ag[le_indices[b + (1 << (v - i))]] * r_i;    
+                    ag[le_indices[b]] * (F::one() - r_i) + ag[le_indices[b + (1 << (v - i))]] * r_i;
             }
         }
     }
 
     fn run(&mut self) -> Transcript<F> {
-
         self.sumcheck_prod(&self.f.clone(), &self.g.clone());
 
         println!("Prover finished successfully");
@@ -190,9 +197,44 @@ impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
     }
 }
 
+pub(crate) fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
+    f_1: &SparseMultilinearExtension<F>,
+    f_3: &MLE,
+    g: &[F],
+) -> Vec<F> {
+    
+    let v = f_3.num_vars();
+    let le_indices_f1 = to_le_indices(f_1.num_vars);
+    let le_indices_f3 = to_le_indices(v);
+
+    let mut table_g = vec![F::zero(); 1 << v];
+
+    table_g[0] = F::one();
+
+    for i in 0..v {
+        for b in 0..(1 << i) {
+            table_g[2 * b] = table_g[b] * (F::one() - g[i]);
+            table_g[2 * b + 1] = table_g[b] * g[i];
+        }
+    }
+
+    let mut ahg = vec![F::zero(); 1 << v];
+    println!("f1: {:?}", f_1.evaluations);
+    for (idx_le, val) in f_1.evaluations.iter() {
+        let idx = le_indices_f1[*idx_le];
+        let (z, x, y) = usize_to_zxy(idx, v);
+        println!("idx: {}, x: {}, y: {}, z: {}", idx, x, y, z);
+        ahg[x] += table_g[z] * val * f_3.to_evaluations()[le_indices_f3[y]];
+    }
+
+    ahg
+}
+
 // run the protocol and return true iff the verifier does not abort
 pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F>>(f: MLE, g: MLE) {
-    println!("Initiated sumcheck protocol on the product of the polynomials \n\t{f:?}\nand\n\t{g:?}");
+    println!(
+        "Initiated sumcheck protocol on the product of the polynomials \n\t{f:?}\nand\n\t{g:?}"
+    );
 
     let mut prover = Prover::new(f.clone(), g.clone(), test_sponge());
 
@@ -206,4 +248,3 @@ pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F
 
     assert!(verifier.run());
 }
-
