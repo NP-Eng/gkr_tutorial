@@ -1,7 +1,11 @@
 #[cfg(test)]
 mod tests {
+    use crate::{
+        parties::{initialise_phase_1, initialise_phase_2, precompute, run_sumcheck_protocol},
+        utils::usize_to_zxy,
+        Fq,
+    };
     use ark_poly::{DenseMultilinearExtension, SparseMultilinearExtension};
-    use crate::{parties::{initialise_phase_1, initialise_phase_2, precompute}, utils::usize_to_zxy, Fq};
     use ark_std::UniformRand;
 
     #[test]
@@ -265,12 +269,45 @@ mod tests {
 
         // computed by hand
         let expected = vec![
-            Fq::from(27_u64), 
+            Fq::from(27_u64),
             Fq::from(54_u64),
             Fq::from(42_u64),
             Fq::from(69_u64),
         ];
-        
+
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn tests_sumcheck() {
+        let mut test_rng = ark_std::test_rng();
+        // f(x1, x2, x3, x4, x5, x6) = f(g1, g2, x1, x2, y1, y2)
+        // f1 = (1-x1)(1-x2)(1-x3)(1-x5)[(1-x6)*x4 + 2(1-x4)*x6]
+        let points = vec![(8, Fq::from(1_u64)), (32, Fq::from(2_u64))];
+
+        // asssume |x| = |y| = 2, so f1 would be a 6-variate
+        // |z| = 2
+        let f1 = SparseMultilinearExtension::from_evaluations(6, &points);
+
+        let g = vec![Fq::from(2u64), Fq::from(3u64)];
+
+        let f2 = DenseMultilinearExtension::from_evaluations_vec(
+            2,
+            vec![1, 6, 5, 0]
+                .into_iter()
+                .map(|x| Fq::from(x as u64))
+                .collect(),
+        );
+        // eval vector in LE indexing
+        // f3(y1, y2) = 1 - 10 * y1 * y2 + 5 * y1 + 4 * y2
+        let f3 = DenseMultilinearExtension::from_evaluations_vec(
+            2,
+            vec![1, 6, 5, 0]
+                .into_iter()
+                .map(|x| Fq::from(x as u64))
+                .collect(),
+        );
+
+        run_sumcheck_protocol(f1, f2, f3, &g);
     }
 }

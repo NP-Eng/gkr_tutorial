@@ -1,10 +1,11 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, thread::sleep_ms};
 
 use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
 
 use ark_poly::{MultilinearExtension, SparseMultilinearExtension};
+use rand_chacha::rand_core::le;
 
 use crate::utils::{interpolate_uni_poly, test_sponge, usize_to_zxy, Transcript};
 
@@ -17,7 +18,7 @@ pub struct Prover<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> {
 }
 
 pub trait Oracle<F> {
-    fn divinate(&self, x: &[F]) -> F;
+    fn divinate(&self, x: &[F], y: &[F]) -> F;
     fn num_vars(&self) -> usize;
 }
 
@@ -25,30 +26,30 @@ struct PolyOracle<F: PrimeField, MLE: MultilinearExtension<F>> {
     f1: SparseMultilinearExtension<F>,
     f2: MLE,
     f3: MLE,
-    phantom: PhantomData<F>,
+    g: Vec<F>,
 }
 
 impl<F: PrimeField, MLE: MultilinearExtension<F>> PolyOracle<F, MLE> {
-    fn new(f1: SparseMultilinearExtension<F>, f2: MLE, f3: MLE) -> Self {
-        Self {
-            f1,
-            f2,
-            f3,
-            phantom: PhantomData,
-        }
+    fn new(f1: SparseMultilinearExtension<F>, f2: MLE, f3: MLE, g: Vec<F>) -> Self {
+        Self { f1, f2, f3, g }
     }
 }
 
 impl<F: PrimeField, MLE: MultilinearExtension<F>> Oracle<F> for PolyOracle<F, MLE> {
-    fn divinate(&self, x: &[F]) -> F {
-        // self.f.evaluate(&x).unwrap() * self.g.evaluate(&x).unwrap()
-        unimplemented!()
+    fn divinate(&self, x: &[F], y: &[F]) -> F {
+        let mut zxy: Vec<F> = Vec::from(self.g.clone());
+        zxy.extend(x);
+        zxy.extend(y);
+
+        self.f1.evaluate(&zxy).unwrap()
+            * self.f2.evaluate(&x).unwrap()
+            * self.f3.evaluate(&y).unwrap()
     }
 
     // returns the number of variables of EACH of the two polynomials
     // the total number of variables of the product is twice that
     fn num_vars(&self) -> usize {
-        self.f3.num_vars()
+        2 * self.f2.num_vars()
     }
 }
 
@@ -85,11 +86,11 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
             transcript: Transcript::new(),
         }
     }
-    fn sumcheck_prod(&mut self, A_f: &mut Vec<F>, A_g: &mut Vec<F>, v: usize) {
+    fn sumcheck_prod(&mut self, A_f: &mut Vec<F>, A_g: &mut Vec<F>, v: usize) -> F {
         // first round; claimed_value contains the value the Prover wants to prove
         let claimed_value = (0..1 << v).map(|i| A_f[i] * A_g[i]).sum();
 
-        self.transcript.update(&[claimed_value], &mut self.sponge);
+        // self.transcript.update(&[claimed_value], &mut self.sponge);
 
         let mut f_values = vec![vec![F::zero(); 1 << (v - 1)]; 3];
         let mut g_values = vec![vec![F::zero(); 1 << (v - 1)]; 3];
@@ -126,6 +127,8 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
                     + A_g[le_indices[b + (1 << (v - i))]] * r_i;
             }
         }
+
+        claimed_value
     }
 
     fn run(&mut self, g: &[F]) -> Transcript<F> {
@@ -139,11 +142,20 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
         self.sumcheck_prod(&mut A_h, &mut A_f2, self.f2.num_vars());
 
         // phase 2
-        let u = &self.transcript.challenges[..];
+        let u_be = &self.transcript.challenges[..];
+        let le_indices = to_le_indices(1);
+        let u = le_indices
+            .iter()
+            .map(|i| u_be[*i])
+            .collect::<Vec<F>>();
 
-        let mut A_f1 = initialise_phase_2::<F>(&self.f1, g, u);
+        let f2_u = self.f2.evaluate(&u).unwrap();
 
-        self.sumcheck_prod(&mut A_f1, &mut A_f3, self.f2.num_vars());
+        let mut A_f1 = initialise_phase_2::<F>(&self.f1, g, &u);
+        let mut A_f3_f2_u = A_f3.iter().map(|x| *x * f2_u).collect::<Vec<F>>();
+
+        let claimed_value = self.sumcheck_prod(&mut A_f1, &mut A_f3_f2_u, self.f2.num_vars());
+        self.transcript.set_claim(claimed_value);
 
         println!("Prover finished successfully");
 
@@ -159,12 +171,13 @@ impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
 
         // last_pol is initialised to a singleton list containing the claimed value
         // in subsequent rounds, it contains the values of the would-be-sent polynomial at 0, 1 and 2
-        let mut last_pol = Vec::from(&self.transcript.values[0][..]);
+        let mut last_pol = vec![self.transcript.claim.unwrap()];
 
-        let mut last_sent_scalar = self.transcript.challenges[0];
+        // dummy scalar to be used when evaluating the constant poly in the first iteration
+        let mut last_sent_scalar = F::one();
 
         // round numbering in line with Thaler's book (necessarily inconsistent variable indexing!)
-        for r in 1..=v {
+        for r in 0..v {
             let new_pol_evals = self.transcript.values[r].clone();
             let claimed_sum = new_pol_evals[0] + new_pol_evals[1];
             let new_pol = Vec::from(&new_pol_evals[..]);
@@ -175,22 +188,26 @@ impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
                         );
                 return false;
             }
-
-            // cannot fail to unwrap due to round count
             last_sent_scalar = self.transcript.challenges[r];
 
             last_pol = new_pol;
         }
 
         if interpolate_uni_poly(&last_pol, last_sent_scalar)
-            != self.oracle.divinate(&self.transcript.challenges[1..])
+            != self.oracle.divinate(
+                &self.transcript.challenges[..(v / 2)],
+                &self.transcript.challenges[(v / 2)..],
+            )
         {
             println!(
                 "Verifier found inconsistent evaluation in the oracle call: \
                         received univariate polynomial {last_pol:?} evaluates to {},\n  \
                         whereas original multivariate one evaluates to {} on {:?}. Aborting.",
                 interpolate_uni_poly(&last_pol, last_sent_scalar),
-                self.oracle.divinate(&self.transcript.challenges[1..]),
+                self.oracle.divinate(
+                    &self.transcript.challenges[..(v / 2)],
+                    &self.transcript.challenges[(v / 2)..],
+                ),
                 self.transcript.challenges[1..].to_vec(),
             );
             return false;
@@ -275,18 +292,21 @@ pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F
     f1: SparseMultilinearExtension<F>,
     f2: MLE,
     f3: MLE,
+    g: &[F],
 ) {
     // println!(
     //     "Initiated sumcheck protocol on the product of the polynomials \n\t{f:?}\nand\n\t{g:?}"
     // );
 
     let mut prover = Prover::new(f1.clone(), f2.clone(), f3.clone(), test_sponge());
-    let g = vec![F::one(); 1 << f2.num_vars()];
+    // let g = vec![F::one(); 1 << f2.num_vars()];
 
     let transcript = prover.run(&g);
 
+    println!("CLAIMED VALUE {:?}", transcript.claim);
+
     let mut verifier = Verifier {
-        oracle: PolyOracle::new(f1, f2, f3), // TODO: decide if passing & is enough
+        oracle: PolyOracle::new(f1, f2, f3, g.to_vec()), // TODO: decide if passing & is enough
         sponge: test_sponge(),
         transcript,
     };

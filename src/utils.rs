@@ -31,6 +31,7 @@ pub(crate) fn test_sponge<F: PrimeField>() -> PoseidonSponge<F> {
 pub struct Transcript<F: PrimeField + Absorb> {
     pub values: Vec<Vec<F>>,
     pub challenges: Vec<F>,
+    pub claim: Option<F>,
 }
 
 impl<F: PrimeField + Absorb> Transcript<F> {
@@ -38,6 +39,7 @@ impl<F: PrimeField + Absorb> Transcript<F> {
         Self {
             values: Vec::new(),
             challenges: Vec::new(),
+            claim: None,
         }
     }
 
@@ -64,6 +66,10 @@ impl<F: PrimeField + Absorb> Transcript<F> {
         }
 
         true
+    }
+
+    pub fn set_claim(&mut self, claimed_value: F) {
+        self.claim = Some(claimed_value);
     }
 }
 
