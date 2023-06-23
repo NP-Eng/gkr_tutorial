@@ -68,10 +68,10 @@ impl<F: PrimeField + Absorb> Transcript<F> {
 }
 
 // separate a bit string represented as a usize into three values,
-// the last of which correspond to 
+// the last of which correspond to
 #[inline]
 pub fn usize_to_zxy(idx: usize, v: usize) -> (usize, usize, usize) {
-    let vp =  1 << v;
+    let vp = 1 << v;
 
     let y = idx % vp;
     let idx_zx = idx / vp;
@@ -81,8 +81,8 @@ pub fn usize_to_zxy(idx: usize, v: usize) -> (usize, usize, usize) {
     (z, x, y)
 }
 
-/// interpolate the *unique* univariate polynomial of degree *at most* 
-/// p_i.len()-1 passing through the y-values in p_i at x = 0,..., p_i.len()-1 
+/// interpolate the *unique* univariate polynomial of degree *at most*
+/// p_i.len()-1 passing through the y-values in p_i at x = 0,..., p_i.len()-1
 /// and evaluate this  polynomial at `eval_at`. In other words, efficiently compute
 ///  \sum_{i=0}^{len p_i - 1} p_i[i] * (\prod_{j!=i} (eval_at - j)/(i-j))
 pub(crate) fn interpolate_uni_poly<F: PrimeField>(p_i: &[F], eval_at: F) -> F {

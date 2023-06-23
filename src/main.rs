@@ -83,7 +83,10 @@ mod tests {
     use ark_poly::{DenseMultilinearExtension, SparseMultilinearExtension};
     // use ark_bls12_381::Fq;
     use super::Fq;
-    use crate::{parties::{initialise_phase_1, initialise_phase_2}, utils::usize_to_zxy};
+    use crate::{
+        parties::{initialise_phase_1, initialise_phase_2, precompute},
+        utils::usize_to_zxy,
+    };
     use ark_std::UniformRand;
 
     #[test]
@@ -343,15 +346,18 @@ mod tests {
         let g = vec![Fq::from(80u64), Fq::from(6u64)];
         let u = vec![Fq::from(27u64), Fq::from(12u64)];
 
+        println!("TESTER TABLE G: {:?}", precompute(&g));
+
         let actual = initialise_phase_2(&f1, &g, &u);
 
         // computed by hand
         let expected = vec![
-            (0, Fq::from(27_u64)), 
-            (1, Fq::from(42_u64)), 
-            (2, Fq::from(54_u64)), 
-            (3, Fq::from(69_u64)),
+            Fq::from(27_u64),
+            Fq::from(42_u64),
+            Fq::from(54_u64),
+            Fq::from(69_u64),
         ];
+
         assert_eq!(actual, expected);
     }
 }

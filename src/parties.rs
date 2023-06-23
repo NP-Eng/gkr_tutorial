@@ -86,9 +86,6 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
         }
     }
     fn sumcheck_prod(&mut self, A_f: &mut Vec<F>, A_g: &mut Vec<F>, v: usize) {
-
-
-
         // first round; claimed_value contains the value the Prover wants to prove
         let claimed_value = (0..1 << v).map(|i| A_f[i] * A_g[i]).sum();
 
@@ -124,10 +121,10 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
 
             // Algorithm 1, part 2
             for b in 0..(1 << (v - i)) {
-                A_f[le_indices[b]] =
-                    A_f[le_indices[b]] * (F::one() - r_i) + A_f[le_indices[b + (1 << (v - i))]] * r_i;
-                A_g[le_indices[b]] =
-                    A_g[le_indices[b]] * (F::one() - r_i) + A_g[le_indices[b + (1 << (v - i))]] * r_i;
+                A_f[le_indices[b]] = A_f[le_indices[b]] * (F::one() - r_i)
+                    + A_f[le_indices[b + (1 << (v - i))]] * r_i;
+                A_g[le_indices[b]] = A_g[le_indices[b]] * (F::one() - r_i)
+                    + A_g[le_indices[b + (1 << (v - i))]] * r_i;
             }
         }
     }
@@ -141,7 +138,7 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
         let mut A_h = initialise_phase_1(&self.f1, &self.f3, &g);
 
         let mut A_f2 = self.f2.to_evaluations();
-        let mut A_f3= self.f3.to_evaluations();
+        let mut A_f3 = self.f3.to_evaluations();
 
         let mut A_f1 = initialise_phase_2(&self.f1, &g, &u);
 
@@ -208,20 +205,25 @@ impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
     }
 }
 
-fn precompute<F: PrimeField>(vals: &[F]) -> Vec<F> {
+pub(crate) fn precompute<F: PrimeField>(vals: &[F]) -> Vec<F> {
+    // TODO since we're cloning the new table, maybe the table sizes can be optimized
+    // or keep 2 fixed tables and swap pointers in each iteration
     let n = vals.len();
 
     let mut table = vec![F::zero(); 1 << n];
+    let mut new_table: Vec<F> = vec![F::zero(); 1 << n];
+
     table[0] = F::one();
 
     for i in 0..n {
         for b in 0..(1 << i) {
-            table[2 * b] = table[b] * (F::one() - vals[i]);
-            table[2 * b + 1] = table[b] * vals[i];
+            new_table[2 * b] = table[b] * (F::one() - vals[i]);
+            new_table[2 * b + 1] = table[b] * vals[i];
         }
+        table = new_table.clone();
     }
 
-    table
+    new_table
 }
 
 pub(crate) fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
@@ -245,10 +247,10 @@ pub(crate) fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
     ahg
 }
 
-pub(crate) fn initialise_phase_2<F: PrimeField, MLE: MultilinearExtension<F>>(
+pub(crate) fn initialise_phase_2<F: PrimeField>(
     f_1: &SparseMultilinearExtension<F>,
     g: &[F],
-    u: &[F]
+    u: &[F],
 ) -> Vec<F> {
     let v = g.len();
     let le_indices = to_le_indices(f_1.num_vars);
@@ -268,7 +270,11 @@ pub(crate) fn initialise_phase_2<F: PrimeField, MLE: MultilinearExtension<F>>(
 }
 
 // run the protocol and return true iff the verifier does not abort
-pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F>>(f1: SparseMultilinearExtension<F>, f2: MLE, f3: MLE) {
+pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F>>(
+    f1: SparseMultilinearExtension<F>,
+    f2: MLE,
+    f3: MLE,
+) {
     // println!(
     //     "Initiated sumcheck protocol on the product of the polynomials \n\t{f:?}\nand\n\t{g:?}"
     // );
