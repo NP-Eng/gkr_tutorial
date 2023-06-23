@@ -194,6 +194,22 @@ impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
     }
 }
 
+fn precompute<F: PrimeField>(vals: &[F]) -> Vec<F> {
+    let n = vals.len();
+
+    let mut table = vec![F::zero(); 1 << n];
+    table[0] = F::one();
+
+    for i in 0..n {
+        for b in 0..(1 << i) {
+            table[2 * b] = table[b] * (F::one() - vals[i]);
+            table[2 * b + 1] = table[b] * vals[i];
+        }
+    }
+
+    table
+}
+
 pub(crate) fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
     f_1: &SparseMultilinearExtension<F>,
     f_3: &MLE,
@@ -203,17 +219,7 @@ pub(crate) fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
     let le_indices_f1 = to_le_indices(f_1.num_vars);
     let le_indices_f3 = to_le_indices(v);
 
-    let mut table_g = vec![F::zero(); 1 << v];
-
-    table_g[0] = F::one();
-
-    for i in 0..v {
-        for b in 0..(1 << i) {
-            table_g[2 * b] = table_g[b] * (F::one() - g[i]);
-            table_g[2 * b + 1] = table_g[b] * g[i];
-        }
-    }
-
+    let table_g = precompute(g);
     let mut ahg = vec![F::zero(); 1 << v];
 
     for (idx_le, val) in f_1.evaluations.iter() {
