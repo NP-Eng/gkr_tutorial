@@ -86,6 +86,8 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
             transcript: Transcript::new(),
         }
     }
+
+    #[allow(non_snake_case)]
     fn sumcheck_prod(&mut self, A_f: &mut Vec<F>, A_g: &mut Vec<F>, v: usize) -> F {
         // first round; claimed_value contains the value the Prover wants to prove
         let claimed_value = (0..1 << v).map(|i| A_f[i] * A_g[i]).sum();
@@ -131,6 +133,7 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
         claimed_value
     }
 
+    #[allow(non_snake_case)]
     fn run(&mut self, g: &[F]) -> Transcript<F> {
         // Algorithm 6. Sumcheck GKR
         let mut A_h = initialise_phase_1(&self.f1, &self.f3, g);
