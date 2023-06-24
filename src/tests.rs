@@ -305,4 +305,45 @@ mod tests {
 
         run_sumcheck_protocol(f1, f2, f3, &g);
     }
+
+    #[test]
+    fn tests_sumcheck_randomized() {
+        let mut test_rng = ark_std::test_rng();
+        // degree_x is the degree of both f2 (in x) and f3 (in y)
+        // only go up to degree 7, otherwise tests start taking long
+        for degree_x in 3..8 {
+            // total degree of f1
+            let d = 3 * degree_x;
+            // create a random sparse MLE with 2^(d-2) evaluation points (25% density)
+            let num_evals: usize = 1 << (d - 2);
+            let points = (0..num_evals)
+                .into_iter()
+                .map(|i| (i, Fq::rand(&mut test_rng)))
+                .collect::<Vec<_>>();
+            let f1 = SparseMultilinearExtension::from_evaluations(d, &points);
+            // generate random g
+            let g = (0..degree_x)
+                .into_iter()
+                .map(|_| Fq::rand(&mut test_rng))
+                .collect::<Vec<_>>();
+            // generate a random f2 from Vec<Fq>
+            let f2 = DenseMultilinearExtension::from_evaluations_vec(
+                degree_x,
+                (0..(1 << degree_x))
+                    .into_iter()
+                    .map(|_| Fq::rand(&mut test_rng))
+                    .collect::<Vec<_>>(),
+            );
+            // same for f3
+            let f3 = DenseMultilinearExtension::from_evaluations_vec(
+                degree_x,
+                (0..(1 << degree_x))
+                    .into_iter()
+                    .map(|_| Fq::rand(&mut test_rng))
+                    .collect::<Vec<_>>(),
+            );
+
+            run_sumcheck_protocol(f1, f2, f3, &g);
+        }
+    }
 }
