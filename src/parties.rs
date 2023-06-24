@@ -1,11 +1,8 @@
-use std::{marker::PhantomData, thread::sleep_ms};
-
 use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
 
 use ark_poly::{MultilinearExtension, SparseMultilinearExtension};
-use rand_chacha::rand_core::le;
 
 use crate::utils::{interpolate_uni_poly, test_sponge, usize_to_zxy, Transcript};
 
@@ -70,14 +67,6 @@ pub(crate) fn to_le_indices(v: usize) -> Vec<usize> {
 
 impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
     fn new(f1: SparseMultilinearExtension<F>, f2: MLE, f3: MLE, sponge: PoseidonSponge<F>) -> Self {
-        // let v = f2.num_vars();
-        // assert_eq!(
-        //     v,
-        //     g.num_vars(),
-        //     "number of variables mismatched: {v} vs {}",
-        //     g.num_vars()
-        // );
-
         Self {
             f1,
             f2,
@@ -294,12 +283,7 @@ pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F
     f3: MLE,
     g: &[F],
 ) {
-    // println!(
-    //     "Initiated sumcheck protocol on the product of the polynomials \n\t{f:?}\nand\n\t{g:?}"
-    // );
-
     let mut prover = Prover::new(f1.clone(), f2.clone(), f3.clone(), test_sponge());
-    // let g = vec![F::one(); 1 << f2.num_vars()];
 
     let transcript = prover.run(&g);
 

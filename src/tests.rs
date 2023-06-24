@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        parties::{initialise_phase_1, initialise_phase_2, precompute, run_sumcheck_protocol},
+        parties::{initialise_phase_1, initialise_phase_2, run_sumcheck_protocol},
         utils::usize_to_zxy,
         Fq,
     };
@@ -87,7 +87,6 @@ mod tests {
 
     #[test]
     fn tests_phase_1_full() {
-        let mut test_rng = ark_std::test_rng();
         // f(x1, x2, x3, x4, x5, x6) = f(g1, g2, x1, x2, y1, y2)
         // f1 = (1-x1)(1-x2)(1-x3)(1-x5)[(1-x6)*x4 + 2(1-x4)*x6]
         let points = vec![(8, Fq::from(1_u64)), (32, Fq::from(2_u64))];
@@ -122,7 +121,6 @@ mod tests {
 
     #[test]
     fn tests_phase_1_full_non_zero_g() {
-        let mut test_rng = ark_std::test_rng();
         // f(x1, x2, x3, x4, x5, x6) = f(g1, g2, x1, x2, y1, y2)
         // f1 = (1-x1)(1-x2)(1-x3)(1-x5)[(1-x6)*x4 + 2(1-x4)*x6]
         let points = vec![(8, Fq::from(1_u64)), (32, Fq::from(2_u64))];
@@ -156,7 +154,6 @@ mod tests {
 
     #[test]
     fn tests_phase_1_max() {
-        let mut test_rng = ark_std::test_rng();
         // f1 = x1 * (1 - 10 * g1 * g2 + 5 + 4 * x2 + y1 + g2 * y2 - 7 * y2 * x2)
         let points = vec![
             (4, Fq::from(6_u64)),
@@ -222,7 +219,6 @@ mod tests {
 
     #[test]
     fn tests_phase_2_max() {
-        let mut test_rng = ark_std::test_rng();
         // f1 = x1 * (1 - 10 * g1 * g2 + 5 + 4 * x2 + y1 + g2 * y2 - 7 * y2 * x2)
         let points = vec![
             (4, Fq::from(6_u64)),
@@ -280,7 +276,6 @@ mod tests {
 
     #[test]
     fn tests_sumcheck() {
-        let mut test_rng = ark_std::test_rng();
         // f(x1, x2, x3, x4, x5, x6) = f(g1, g2, x1, x2, y1, y2)
         // f1 = (1-x1)(1-x2)(1-x3)(1-x5)[(1-x6)*x4 + 2(1-x4)*x6]
         let points = vec![(8, Fq::from(1_u64)), (32, Fq::from(2_u64))];
