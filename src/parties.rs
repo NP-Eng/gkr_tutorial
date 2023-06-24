@@ -137,25 +137,22 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
 
         // phase 1
         let mut A_f2 = self.f2.to_evaluations();
-        let mut A_f3 = self.f3.to_evaluations();
+        let A_f3 = self.f3.to_evaluations();
 
-        self.sumcheck_prod(&mut A_h, &mut A_f2, self.f2.num_vars());
+        let out = self.sumcheck_prod(&mut A_h, &mut A_f2, self.f2.num_vars());
+
+        // the final claim comes from the first run, since the second is summing over a "different" `f1` (with `x` fixed to some random `u`)
+        self.transcript.set_claim(out);
 
         // phase 2
-        let u_be = &self.transcript.challenges[..];
-        let le_indices = to_le_indices(1);
-        let u = le_indices
-            .iter()
-            .map(|i| u_be[*i])
-            .collect::<Vec<F>>();
+        let u = &self.transcript.challenges[..];
 
         let f2_u = self.f2.evaluate(&u).unwrap();
 
         let mut A_f1 = initialise_phase_2::<F>(&self.f1, g, &u);
         let mut A_f3_f2_u = A_f3.iter().map(|x| *x * f2_u).collect::<Vec<F>>();
 
-        let claimed_value = self.sumcheck_prod(&mut A_f1, &mut A_f3_f2_u, self.f2.num_vars());
-        self.transcript.set_claim(claimed_value);
+        self.sumcheck_prod(&mut A_f1, &mut A_f3_f2_u, self.f2.num_vars());
 
         println!("Prover finished successfully");
 
