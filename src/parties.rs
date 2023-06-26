@@ -395,32 +395,15 @@ pub(crate) fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
 
 pub(crate) fn initialise_phase_2<F: PrimeField>(
     f_1: &SparseMultilinearExtension<F>,
-    g1: &[F],
-    g2: &[F],
-    u1: &[F],
-    u2: &[F],
-    alpha: F,
-    beta: F,
+    g: &[F],
+    u: &[F],
 ) -> Vec<F> {
-    let v = g1.len();
+    let v = g.len();
     let le_indices_f_1 = to_le_indices(f_1.num_vars);
-    let le_indices_g = to_le_indices(g1.len());
+    let le_indices_g = to_le_indices(g.len());
 
-    let table_g1 = precompute(g1);
-    let table_g2 = precompute(g2);
-    let table_g = table_g1
-        .iter()
-        .zip(table_g2.iter())
-        .map(|(x, y)| alpha * *x + beta * *y)
-        .collect::<Vec<F>>();
-
-    let table_u1 = precompute(u1);
-    let table_u2 = precompute(u2);
-    let table_u = table_u1
-        .iter()
-        .zip(table_u2.iter())
-        .map(|(x, y)| alpha * *x + beta * *y)
-        .collect::<Vec<F>>();
+    let table_g = precompute(g);
+    let table_u = precompute(u);
 
     let mut af1 = vec![F::zero(); 1 << v];
 
