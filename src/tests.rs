@@ -1,12 +1,32 @@
+
 #[cfg(test)]
 mod tests {
     use crate::{
-        parties::{initialise_phase_1, initialise_phase_2, run_sumcheck_protocol},
+        parties::{initialise_phase_1 as init_phase_1_original, initialise_phase_2 as init_phase_2_original, run_sumcheck_protocol},
         utils::usize_to_zxy,
         Fq,
     };
-    use ark_poly::{DenseMultilinearExtension, SparseMultilinearExtension};
+    use ark_ff::PrimeField;
+    use ark_poly::{DenseMultilinearExtension, SparseMultilinearExtension, MultilinearExtension};
     use ark_std::UniformRand;
+
+    fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
+        f_1: &SparseMultilinearExtension<F>,
+        f_3: &MLE,
+        g: &[F]
+    ) -> Vec<F> 
+    {
+        init_phase_1_original(f_1, f_3, g, g, F::one(), F::zero())
+    }
+
+    fn initialise_phase_2<F: PrimeField>(
+        f_1: &SparseMultilinearExtension<F>,
+        g: &[F],
+        u: &[F]
+    ) -> Vec<F> 
+    {
+        init_phase_2_original(f_1, g, g, u, F::one(), F::zero())
+    }
 
     #[test]
     fn test_int_to_zxy() {
@@ -261,7 +281,7 @@ mod tests {
         let g = vec![Fq::from(80u64), Fq::from(6u64)];
         let u = vec![Fq::from(27u64), Fq::from(12u64)];
 
-        let actual = initialise_phase_2(&f1, &g, &u);
+        let actual = initialise_phase_2::<Fq>(&f1, &g, &u);
 
         // computed by hand
         let expected = vec![
