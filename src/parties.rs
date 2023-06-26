@@ -211,7 +211,7 @@ impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
     }
 }
 
-pub(crate) fn precompute<F: PrimeField>(vals: &[F]) -> Vec<F> {
+pub(crate) fn old_precompute<F: PrimeField>(vals: &[F]) -> Vec<F> {
     // TODO since we're cloning the new table, maybe the table sizes can be optimized
     // or keep 2 fixed tables and swap pointers in each iteration
     let n = vals.len();
@@ -230,6 +230,30 @@ pub(crate) fn precompute<F: PrimeField>(vals: &[F]) -> Vec<F> {
     }
 
     new_table
+}
+
+pub(crate) fn precompute<F: PrimeField>(vals: &[F]) -> Vec<F> {
+    // TODO since we're cloning the new table, maybe the table sizes can be optimized
+    // or keep 2 fixed tables and swap pointers in each iteration
+    let n = vals.len();
+
+    let mut table_1 = vec![F::zero(); 1 << n];
+    let mut table_2: Vec<F> = vec![F::zero(); 1 << n];
+
+    let mut old_table = &mut table_1;
+    let mut new_table = &mut table_2;
+
+    old_table[0] = F::one();
+
+    for i in 0..n {
+        for b in 0..(1 << i) {
+            new_table[2 * b] = old_table[b] * (F::one() - vals[i]);
+            new_table[2 * b + 1] = old_table[b] * vals[i];
+        }
+        std::mem::swap(&mut old_table, &mut new_table);
+    }
+
+    if n % 2 == 0 {table_1} else {table_2}
 }
 
 pub(crate) fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
