@@ -1,3 +1,5 @@
+use std::iter::zip;
+
 use ark_bls12_381::g2;
 use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 use ark_crypto_primitives::sponge::Absorb;
@@ -202,20 +204,35 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
         claimed_value
     }
 
-    #[allow(non_snake_case)]
-    pub fn run(&mut self, g1: &[F], g2: &[F]) -> Transcript<F> {
-        let A_h: [Vec<F>; 3];
 
-        // Algorithm 6. Sumcheck GKR
-        for (i, Product(f1, f2, f3)) in self.sum_of_products.terms.enumerate() {
-            let mut A_h_ = initialise_phase_1(f1, f3, g1, g2, alpha, beta);
-        }
+    // Algorithm 6 (Sumcheck GKR) adapted to a sum of products
+    #[allow(non_snake_case)]
+    pub fn run(&mut self, g1: &[F], g2: &[F], alpha: F, beta: F) -> Transcript<F> {
+
+        let Product(_, pol, _) = self.sum_of_products.terms[0];
+        let k = pol.num_vars();
+
+        let A_h: [Vec<F>; 3];
+        let A_f2: [Vec<F>; 3];
+        let A_f3: [Vec<F>; 3];
 
         // phase 1
-        let mut A_f2 = self.f2.to_evaluations();
-        let A_f3 = self.f3.to_evaluations();
+        for (i, Product(f1, f2, f3)) in self.sum_of_products.terms.enumerate() {
 
-        let out = self.sumcheck_prod(&mut A_h, &mut A_f2, self.f2.num_vars());
+            A_h[i] = initialise_phase_1(&f1, &f3, g1, g2, alpha, beta);
+            A_f2[i] = f2.to_evaluations();
+            A_f3[i] = f3.to_evaluations();
+        
+        }
+
+        // adding together the precomputation tables for the three summands elementwise
+        // TODO replace by function call?
+        let add_three = |(a, (b, c))| a + b + c;
+        let A_h = zip(A_h[0], zip(A_h[1], A_h[2])).map(add_three).collect();
+        let A_f2 = zip(A_f2[0], zip(A_f2[1], A_f2[2])).map(add_three).collect();
+        let A_f3 = zip(A_f3[0], zip(A_f3[1], A_f3[2])).map(add_three).collect();
+        
+        let out = self.sumcheck_prod(&mut A_h, &mut A_f2, k);
 
         // the final claim comes from the first run, since the second is summing over a "different" `f1` (with `x` fixed to some random `u`)
         self.transcript.set_claim(out);
@@ -223,12 +240,12 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
         // phase 2
         let u = &self.transcript.challenges[..];
 
-        let f2_u = self.f2.evaluate(&u).unwrap();
+        let f2_u = f2.evaluate(&u).unwrap();
 
-        let mut A_f1 = initialise_phase_2::<F>(&self.f1, g, &u);
+        let mut A_f1 = initialise_phase_2::<F>(&f1, g1, g2, &u1, &u2);
         let mut A_f3_f2_u = A_f3.iter().map(|x| *x * f2_u).collect::<Vec<F>>();
 
-        self.sumcheck_prod(&mut A_f1, &mut A_f3_f2_u, self.f2.num_vars());
+        self.sumcheck_prod(&mut A_f1, &mut A_f3_f2_u, f2.num_vars());
 
         println!("Prover finished successfully");
 
@@ -378,15 +395,32 @@ pub(crate) fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
 
 pub(crate) fn initialise_phase_2<F: PrimeField>(
     f_1: &SparseMultilinearExtension<F>,
-    g: &[F],
-    u: &[F],
+    g1: &[F],
+    g2: &[F],
+    u1: &[F],
+    u2: &[F],
+    alpha: F,
+    beta: F,
 ) -> Vec<F> {
-    let v = g.len();
+    let v = g1.len();
     let le_indices_f_1 = to_le_indices(f_1.num_vars);
-    let le_indices_g = to_le_indices(g.len());
+    let le_indices_g = to_le_indices(g1.len());
 
-    let table_g = precompute(g);
-    let table_u = precompute(u);
+    let table_g1 = precompute(g1);
+    let table_g2 = precompute(g2);
+    let table_g = table_g1
+        .iter()
+        .zip(table_g2.iter())
+        .map(|(x, y)| alpha * *x + beta * *y)
+        .collect::<Vec<F>>();
+
+    let table_u1 = precompute(u1);
+    let table_u2 = precompute(u2);
+    let table_u = table_u1
+        .iter()
+        .zip(table_u2.iter())
+        .map(|(x, y)| alpha * *x + beta * *y)
+        .collect::<Vec<F>>();
 
     let mut af1 = vec![F::zero(); 1 << v];
 
