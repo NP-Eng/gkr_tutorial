@@ -10,10 +10,10 @@ use ark_poly::{MultilinearExtension, SparseMultilinearExtension};
 use crate::utils::{interpolate_uni_poly, test_sponge, usize_to_zxy, Transcript};
 
 #[derive(Clone, Debug)]
-struct Product<F: PrimeField, MLE: MultilinearExtension<F>>(
-    SparseMultilinearExtension<F>,
-    MLE,
-    MLE,
+pub struct Product<F: PrimeField, MLE: MultilinearExtension<F>>(
+    pub SparseMultilinearExtension<F>,
+    pub MLE,
+    pub MLE,
 );
 
 #[derive(Clone, Debug)]
@@ -22,7 +22,7 @@ pub struct SumOfProducts<F: PrimeField, MLE: MultilinearExtension<F>> {
     // 1st: [alpha * add(g1, x, y) + beta * add(g2, x, y)] * f2(x) * 1 +
     // 2nd: [alpha * add(g1, x, y) + beta * add(g2, x, y)] * 1 * f3(y) +
     // 3rd [alpha * mul(g1, x, y) + beta * mul(g2, x, y)] * f2(x) * f3(y)
-    terms: Vec<Product<F, MLE>>,
+    pub terms: Vec<Product<F, MLE>>,
 }
 
 pub struct Prover<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> {
@@ -61,6 +61,54 @@ impl<F: PrimeField, MLE: MultilinearExtension<F>> Oracle<F> for PolyOracle<F, ML
         }
 
         sum
+    }
+
+    // returns the number of variables of EACH of the two polynomials
+    // the total number of variables of the product is twice that
+    fn num_rounds(&self) -> usize {
+        let Product(_, f2, _) = &self.sum_of_products.terms[0];
+        2 * f2.num_vars()
+    }
+
+    fn trust_message(&self) -> String {
+        String::from("unconditionally")
+    }
+}
+
+struct CombinedPolyOracle<F: PrimeField, MLE: MultilinearExtension<F>> {
+    sum_of_products: SumOfProducts<F, MLE>,
+    g1: Vec<F>,
+    g2: Vec<F>,
+    alpha: F,
+    beta: F
+}
+
+impl<F: PrimeField, MLE: MultilinearExtension<F>> CombinedPolyOracle<F, MLE> {
+    fn new(sum_of_products: SumOfProducts<F, MLE>, g1: Vec<F>, g2: Vec<F>, alpha: F, beta: F) -> Self {
+        Self { sum_of_products, g1, g2, alpha, beta }
+    }
+}
+
+impl<F: PrimeField, MLE: MultilinearExtension<F>> Oracle<F> for CombinedPolyOracle<F, MLE> {
+    fn divinate(&self, x: &[F], y: &[F]) -> F {
+
+        let mut sums = Vec::new();
+
+        for (coeff, g) in vec![(self.alpha, self.g1.clone()), (self.beta, self.g2.clone())] {
+            let mut zxy: Vec<F> = Vec::from(g.clone());
+            zxy.extend(x);
+            zxy.extend(y);
+
+            let mut sum = F::zero();
+
+            for Product(f1, f2, f3) in &self.sum_of_products.terms {
+                sum += f1.evaluate(&zxy).unwrap() * f2.evaluate(&x).unwrap() * f3.evaluate(&y).unwrap()
+            }
+
+            sums.push(coeff * sum);
+        }
+
+        sums[0] + sums[1]
     }
 
     // returns the number of variables of EACH of the two polynomials
@@ -438,10 +486,70 @@ pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F
 
     let transcript = prover.run(&g, &g, F::one(), F::zero());
 
-    println!("CLAIMED VALUE {:?}", transcript.claim);
-
     let mut verifier = Verifier {
         oracle: PolyOracle::new(simple_sum, g.to_vec()), // TODO: decide if passing & is enough
+        sponge: test_sponge(),
+        transcript,
+    };
+
+    assert!(verifier.run());
+}
+
+
+// run the protocol and return true iff the verifier does not abort
+pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearExtension<F>>(
+    f1: SparseMultilinearExtension<F>,
+    f2: MLE,
+    f3: MLE,
+    g1: &[F],
+    g2: &[F],
+    alpha: F,
+    beta: F
+) {
+
+    let simple_sum = SumOfProducts {
+        terms: vec![Product(f1, f2, f3)],
+    };
+    
+    let mut prover = Prover::new(simple_sum.clone(), test_sponge());
+
+    let transcript = prover.run(&g1, &g2, alpha, beta);
+
+    let mut verifier = Verifier {
+        oracle: CombinedPolyOracle::new(
+            simple_sum,
+            g1.to_vec(),
+            g2.to_vec(),
+            alpha,
+            beta
+        ),
+        sponge: test_sponge(),
+        transcript,
+    };
+
+    assert!(verifier.run());
+}
+
+// run the protocol and return true iff the verifier does not abort
+pub fn run_sumcheck_protocol_combined_multiprod<F: PrimeField + Absorb, MLE: MultilinearExtension<F>>(
+    sum_of_products: SumOfProducts<F, MLE>,
+    g1: &[F],
+    g2: &[F],
+    alpha: F,
+    beta: F
+) {
+    let mut prover = Prover::new(sum_of_products.clone(), test_sponge());
+
+    let transcript = prover.run(&g1, &g2, alpha, beta);
+
+    let mut verifier = Verifier {
+        oracle: CombinedPolyOracle::new(
+            sum_of_products,
+            g1.to_vec(),
+            g2.to_vec(),
+            alpha,
+            beta
+        ),
         sponge: test_sponge(),
         transcript,
     };

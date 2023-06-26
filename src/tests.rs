@@ -2,7 +2,7 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        parties::{initialise_phase_1 as init_phase_1_original, initialise_phase_2 as init_phase_2_original, run_sumcheck_protocol},
+        parties::{initialise_phase_1 as init_phase_1_original, initialise_phase_2 as init_phase_2_original, run_sumcheck_protocol, run_sumcheck_protocol_combined, run_sumcheck_protocol_combined_multiprod, Product, SumOfProducts},
         utils::usize_to_zxy,
         Fq,
     };
@@ -364,6 +364,168 @@ mod tests {
             );
 
             run_sumcheck_protocol(f1, f2, f3, &g);
+        }
+    }
+    
+    #[test]
+    fn tests_sumcheck_trivial_combination() {
+        // same parameters as the test tests_sumcheck, but using the linear-combination interface:
+        // first with coefficients (1, 0), then (0, 1)
+
+        // f(x1, x2, x3, x4, x5, x6) = f(g1, g2, x1, x2, y1, y2)
+        // f1 = (1-x1)(1-x2)(1-x3)(1-x5)[(1-x6)*x4 + 2(1-x4)*x6]
+        let points = vec![(8, Fq::from(1_u64)), (32, Fq::from(2_u64))];
+
+        // asssume |x| = |y| = 2, so f1 would be a 6-variate
+        // |z| = 2
+        let f1 = SparseMultilinearExtension::from_evaluations(6, &points);
+
+        let g = vec![Fq::from(2u64), Fq::from(3u64)];
+
+        let f2 = DenseMultilinearExtension::from_evaluations_vec(
+            2,
+            vec![1, 6, 5, 0]
+                .into_iter()
+                .map(|x| Fq::from(x as u64))
+                .collect(),
+        );
+        // eval vector in LE indexing
+        // f3(y1, y2) = 1 - 10 * y1 * y2 + 5 * y1 + 4 * y2
+        let f3 = DenseMultilinearExtension::from_evaluations_vec(
+            2,
+            vec![1, 6, 5, 0]
+                .into_iter()
+                .map(|x| Fq::from(x as u64))
+                .collect(),
+        );
+
+        let zero_vector = vec![Fq::from(0_u64); g.len()];
+        let ones_vector = vec![Fq::from(0_u64); g.len()];
+
+        run_sumcheck_protocol_combined(f1.clone(), f2.clone(), f3.clone(), &g, &zero_vector, Fq::from(1u64), Fq::from(0_u64));
+        run_sumcheck_protocol_combined(f1, f2, f3, &ones_vector, &g, Fq::from(0_u64), Fq::from(1u64));
+    }
+
+    #[test]
+    fn tests_sumcheck_randomized_combination() {
+        let mut test_rng = ark_std::test_rng();
+        // degree_x is the degree of both f2 (in x) and f3 (in y)
+        // only go up to degree 7, otherwise tests start taking long
+        for degree_x in 3..8 {
+            // total degree of f1
+            let d = 3 * degree_x;
+            // create a random sparse MLE with 2^(d-2) evaluation points (25% density)
+            let num_evals: usize = 1 << (d - 2);
+            let points = (0..num_evals)
+                .into_iter()
+                .map(|i| (i, Fq::rand(&mut test_rng)))
+                .collect::<Vec<_>>();
+            let f1 = SparseMultilinearExtension::from_evaluations(d, &points);
+            // generate random g1
+            let g1 = (0..degree_x)
+                .into_iter()
+                .map(|_| Fq::rand(&mut test_rng))
+                .collect::<Vec<_>>();
+            // generate random g2
+            let g2 = (0..degree_x)
+            .into_iter()
+            .map(|_| Fq::rand(&mut test_rng))
+            .collect::<Vec<_>>();
+            // generate a random f2 from Vec<Fq>
+            let f2 = DenseMultilinearExtension::from_evaluations_vec(
+                degree_x,
+                (0..(1 << degree_x))
+                    .into_iter()
+                    .map(|_| Fq::rand(&mut test_rng))
+                    .collect::<Vec<_>>(),
+            );
+            // same for f3
+            let f3 = DenseMultilinearExtension::from_evaluations_vec(
+                degree_x,
+                (0..(1 << degree_x))
+                    .into_iter()
+                    .map(|_| Fq::rand(&mut test_rng))
+                    .collect::<Vec<_>>(),
+            );
+
+            run_sumcheck_protocol_combined(f1.clone(), f2.clone(), f3.clone(), &g1, &g2, Fq::rand(&mut test_rng), Fq::rand(&mut test_rng));
+        }
+    }
+
+
+    #[test]
+    fn tests_sumcheck_randomized_combination_multiprod() {
+        let mut test_rng = ark_std::test_rng();
+        // degree_x is the degree of both f2 (in x) and f3 (in y)
+        // only go up to degree 7, otherwise tests start taking long
+        for degree_x in 3..8 {
+            // total degree of f1
+            let d = 3 * degree_x;
+            // create a random sparse MLE with 2^(d-2) evaluation points (25% density)
+            let num_evals: usize = 1 << (d - 2);
+            let points = (0..num_evals)
+                .into_iter()
+                .map(|i| (i, Fq::rand(&mut test_rng)))
+                .collect::<Vec<_>>();
+            let f11 = SparseMultilinearExtension::from_evaluations(d, &points);
+            // generating second sparse f1
+            let points2 = (0..num_evals)
+                .into_iter()
+                .map(|i| (i, Fq::rand(&mut test_rng)))
+                .collect::<Vec<_>>();
+            let f12 = SparseMultilinearExtension::from_evaluations(d, &points);
+            // generate random g1
+            let g1 = (0..degree_x)
+                .into_iter()
+                .map(|_| Fq::rand(&mut test_rng))
+                .collect::<Vec<_>>();
+            // generate random g2
+            let g2 = (0..degree_x)
+            .into_iter()
+            .map(|_| Fq::rand(&mut test_rng))
+            .collect::<Vec<_>>();
+
+            // generating first f2 from random coeffs
+            let f21 = DenseMultilinearExtension::from_evaluations_vec(
+                degree_x,
+                (0..(1 << degree_x))
+                    .into_iter()
+                    .map(|_| Fq::rand(&mut test_rng))
+                    .collect::<Vec<_>>(),
+            );
+            // same for first f3
+            let f31 = DenseMultilinearExtension::from_evaluations_vec(
+                degree_x,
+                (0..(1 << degree_x))
+                    .into_iter()
+                    .map(|_| Fq::rand(&mut test_rng))
+                    .collect::<Vec<_>>(),
+            );
+            // same for second f2
+            let f22 = DenseMultilinearExtension::from_evaluations_vec(
+                degree_x,
+                (0..(1 << degree_x))
+                    .into_iter()
+                    .map(|_| Fq::rand(&mut test_rng))
+                    .collect::<Vec<_>>(),
+            );
+            // same for second f3
+            let f32 = DenseMultilinearExtension::from_evaluations_vec(
+                degree_x,
+                (0..(1 << degree_x))
+                    .into_iter()
+                    .map(|_| Fq::rand(&mut test_rng))
+                    .collect::<Vec<_>>(),
+            );
+
+            let sum_of_products = SumOfProducts{
+                terms: vec![
+                    Product(f11.clone(), f21.clone(), f31.clone()),
+                    Product(f12.clone(), f22.clone(), f32.clone()),
+                ]
+            };
+
+            run_sumcheck_protocol_combined_multiprod(sum_of_products, &g1, &g2, Fq::rand(&mut test_rng), Fq::rand(&mut test_rng));
         }
     }
 }

@@ -111,9 +111,3 @@ impl<F: PrimeField + Absorb> Verifier<F> {
         true
     }
 }
-
-mod test {
-
-    #[test]
-    fn run_prover() {}
-}
