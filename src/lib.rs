@@ -1,4 +1,4 @@
-// mod gkr;
+mod gkr;
 pub mod parties;
 mod tests;
 mod utils;

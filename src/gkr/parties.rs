@@ -1,9 +1,12 @@
 use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, Absorb, CryptographicSponge};
 use ark_ff::PrimeField;
-use ark_poly::evaluations::multivariate::{DenseMultilinearExtension, MultilinearExtension};
+use ark_poly::{
+    evaluations::multivariate::{DenseMultilinearExtension, MultilinearExtension},
+    SparseMultilinearExtension,
+};
 
 use super::{parties::Transcript as SC_Transcript, UniformCircuit};
-use crate::polynomial::UnivariatePolynomial;
+use crate::parties::Prover as SumcheckProver;
 
 #[derive(Clone, Debug)]
 pub struct Transcript<F: PrimeField + Absorb> {
@@ -54,47 +57,45 @@ struct Prover<F: PrimeField + Absorb> {
 
 impl<F: PrimeField + Absorb> Prover<F> {
     fn run(&mut self, x: Vec<F>) -> Transcript<F> {
-        let w_0 = self.circuit.evaluate(x);
+        let k = self.circuit.layers[0].num_vars;
+        let identically_one =
+            DenseMultilinearExtension::from_evaluations_vec(k, vec![F::one(); 1 << k]);
 
-        let r_0 = self.transcript.update(w_0.clone(), &mut self.sponge, 1);
-        let w0_mle = DenseMultilinearExtension::from_evaluations_vec(
-            self.circuit.layers[0].num_vars,
-            w_0
-        );
+        // compute all the layers
+        let w = self.circuit.evaluate(x);
+        let r_0 = self.transcript.update(w[0].clone(), &mut self.sponge, 1);
 
-        let m = w0_mle.evaluate(&r_0); // TODO possibly unnecessary
+        // init random scalars to 1, 1
+        let mut random_scalars = vec![F::one(), F::one()];
 
-        let d = self.circuit.layers.len();
+        for i in 0..k {
+            let alpha = random_scalars[0];
+            let beta = random_scalars[1];
 
+            let w_iplus1_mle = DenseMultilinearExtension::from_evaluations_vec(k, w[i + 1]);
 
-        f(x, y) = f1(x) + f2(y);
-        mle(f);
+            let [add_i_mle, mul_i_mle]: [SparseMultilinearExtension<F>; 2] =
+                self.circuit.layers[i + 1].into();
 
-        eval_list = Vec::new();
+            // TODO multiply by alpha and beta
+            let f_i_1 = (add_i_mle, w_iplus1_mle, identically_one);
+            let f_i_2 = (add_i_mle, identically_one, w_iplus1_mle);
+            let f_i_3 = (mul_i_mle, w_iplus1_mle, w_iplus1_mle);
 
-        for c in 0..2**k0 {
-            for b 0..2**k0 {
-                
-            }
+            let sumcheck_prover = SumcheckProver::new(vec![f_i_1, f_i_2, f_i_3]);
+            let sumcheck_transcript = sumcheck_prover.run(&r_0);
+            // the first half of the transcript is b*, the second is c*
+            let (b_star, c_star) = sumcheck_transcript.challenges.split_at(k / 2);
+
+            let w_b_star = w_iplus1_mle.evaluate(&b_star).unwrap();
+            let w_c_star = w_iplus1_mle.evaluate(&c_star).unwrap();
+
+            // get the random scalars from the verifier to compute the linear combination
+            random_scalars =
+                self.transcript
+                    .update([w_b_star, w_c_star].to_vec(), &mut self.sponge, 2);
         }
-    
-        w_i_b_plus_w_i_c = DenseMultilinearExtension::from_evaluations_vec(
-            add_i_ri 
-        )
-
-        for i in 0..d {
-
-            // compute wi+1
-            // w_iplus1_mle = DenseMultilinearExtension::from_evaluations_vec(w_iplus1) + 
-
-            let f_i_ri = 
-                DenseMultilinearExtension::from_evaluations_vec(add_i_ri) *
-                    w_iplus1_mle + w_iplus1_mle
-
-
-        }
-
-        unimplemented!()
+        self.transcript
     }
 }
 
@@ -102,6 +103,13 @@ struct Verifier<F: PrimeField + Absorb> {
     circuit: UniformCircuit<F>,
     sponge: PoseidonSponge<F>,
     transcript: Transcript<F>,
+}
+
+// impl run for the verifier
+impl<F: PrimeField + Absorb> Verifier<F> {
+    fn run(&mut self) -> bool {
+        true
+    }
 }
 
 mod test {

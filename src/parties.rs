@@ -1,3 +1,4 @@
+use ark_bls12_381::g2;
 use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
@@ -6,29 +7,44 @@ use ark_poly::{MultilinearExtension, SparseMultilinearExtension};
 
 use crate::utils::{interpolate_uni_poly, test_sponge, usize_to_zxy, Transcript};
 
+struct Product<F: PrimeField, MLE: MultilinearExtension<F>>(
+    SparseMultilinearExtension<F>,
+    MLE,
+    MLE,
+);
+
+struct SumOfProductsCombination<F: PrimeField, MLE: MultilinearExtension<F>> {
+    // for add:
+    // 1st: [alpha * add(g1, x, y) + beta * add(g2, x, y)] * f2(x) * 1 +
+    // 2nd: [alpha * add(g1, x, y) + beta * add(g2, x, y)] * f3(y) * 1 +
+    // 3rd [alpha * mul(g1, x, y) + beta * mul(g2, x, y)] * f2(x) * f3(y)
+    terms: Vec<Product<F, MLE>>,
+    alpha: F,
+    beta: F,
+    g1: F,
+    g2: F,
+}
+
 pub struct Prover<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> {
-    f1: SparseMultilinearExtension<F>,
-    f2: MLE,
-    f3: MLE,
+    sum_of_products: SumOfProductsCombination<F, MLE>,
     sponge: PoseidonSponge<F>,
     transcript: Transcript<F>,
 }
 
 pub trait Oracle<F> {
     fn divinate(&self, x: &[F], y: &[F]) -> F;
-    fn num_vars(&self) -> usize;
+    fn num_rounds(&self) -> usize;
+    fn trust_message(&self) -> String;
 }
 
 struct PolyOracle<F: PrimeField, MLE: MultilinearExtension<F>> {
-    f1: SparseMultilinearExtension<F>,
-    f2: MLE,
-    f3: MLE,
+    sum_of_products: SumOfProductsCombination<F, MLE>,
     g: Vec<F>,
 }
 
 impl<F: PrimeField, MLE: MultilinearExtension<F>> PolyOracle<F, MLE> {
-    fn new(f1: SparseMultilinearExtension<F>, f2: MLE, f3: MLE, g: Vec<F>) -> Self {
-        Self { f1, f2, f3, g }
+    fn new(sum_of_products: SumOfProductsCombination<F, MLE>, g: Vec<F>) -> Self {
+        Self { sum_of_products, g }
     }
 }
 
@@ -38,15 +54,78 @@ impl<F: PrimeField, MLE: MultilinearExtension<F>> Oracle<F> for PolyOracle<F, ML
         zxy.extend(x);
         zxy.extend(y);
 
-        self.f1.evaluate(&zxy).unwrap()
-            * self.f2.evaluate(&x).unwrap()
-            * self.f3.evaluate(&y).unwrap()
+        let mut sum = F::zero();
+
+        for Product(f1, f2, f3) in self.sum_of_products.terms {
+            sum += f1.evaluate(&zxy).unwrap() * f2.evaluate(&x).unwrap() * f3.evaluate(&y).unwrap()
+        }
+
+        sum
     }
 
     // returns the number of variables of EACH of the two polynomials
     // the total number of variables of the product is twice that
-    fn num_vars(&self) -> usize {
+    fn num_rounds(&self) -> usize {
         2 * self.f2.num_vars()
+    }
+
+    fn trust_message(&self) -> String {
+        String::from("unconditionally")
+    }
+}
+
+/* --> generate b*, c*
+--> generate challenge point g
+
+--> Prover computes
+    y_b = W_i_plus_1(b*) = f2(b*)
+    y_c = f3(c*)
+    f1(g, b*, c*) * y_b * y_c
+
+
+
+[f1(z, x, y) * f2(x) * f3(y)] */
+
+struct GKROracle<F: PrimeField> {
+    f1: SparseMultilinearExtension<F>,
+    g: Vec<F>,
+    yb: F,
+    yc: F,
+    num_rounds: usize,
+}
+
+impl<F: PrimeField> GKROracle<F> {
+    fn new(f1: SparseMultilinearExtension<F>, g: Vec<F>, yb: F, yc: F, num_rounds: usize) -> Self {
+        Self {
+            f1,
+            g,
+            yb,
+            yc,
+            num_rounds,
+        }
+    }
+}
+
+impl<F: PrimeField> Oracle<F> for GKROracle<F> {
+    fn divinate(&self, x: &[F], y: &[F]) -> F {
+        let mut zxy: Vec<F> = Vec::from(self.g.clone());
+        zxy.extend(x);
+        zxy.extend(y);
+
+        self.f1.evaluate(&zxy).unwrap() * self.yb * self.yc
+    }
+
+    // returns the number of variables of EACH of the two polynomials
+    // the total number of variables of the product is twice that
+    fn num_rounds(&self) -> usize {
+        self.num_rounds
+    }
+
+    fn trust_message(&self) -> String {
+        format!(
+            "assuming that f(b*) = {:?} and f(c*) = {:?}",
+            self.yb, self.yc
+        )
     }
 }
 
@@ -66,11 +145,12 @@ pub(crate) fn to_le_indices(v: usize) -> Vec<usize> {
 }
 
 impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
-    fn new(f1: SparseMultilinearExtension<F>, f2: MLE, f3: MLE, sponge: PoseidonSponge<F>) -> Self {
+    pub fn new(
+        sum_of_products: SumOfProductsCombination<F, MLE>,
+        sponge: PoseidonSponge<F>,
+    ) -> Self {
         Self {
-            f1,
-            f2,
-            f3,
+            sum_of_products,
             sponge,
             transcript: Transcript::new(),
         }
@@ -123,9 +203,13 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
     }
 
     #[allow(non_snake_case)]
-    fn run(&mut self, g: &[F]) -> Transcript<F> {
+    pub fn run(&mut self, g1: &[F], g2: &[F]) -> Transcript<F> {
+        let A_h: [Vec<F>; 3];
+
         // Algorithm 6. Sumcheck GKR
-        let mut A_h = initialise_phase_1(&self.f1, &self.f3, g);
+        for (i, Product(f1, f2, f3)) in self.sum_of_products.terms.enumerate() {
+            let mut A_h_ = initialise_phase_1(f1, f3, g1, g2, alpha, beta);
+        }
 
         // phase 1
         let mut A_f2 = self.f2.to_evaluations();
@@ -156,7 +240,7 @@ impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
     fn run(&mut self) -> bool {
         self.transcript.verify(&mut self.sponge);
 
-        let v = self.oracle.num_vars();
+        let v = self.oracle.num_rounds();
 
         // last_pol is initialised to a singleton list containing the claimed value
         // in subsequent rounds, it contains the values of the would-be-sent polynomial at 0, 1 and 2
@@ -203,8 +287,9 @@ impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
         }
 
         println!(
-            "Verifier finished successfully and is confident in the value {}",
-            self.transcript.values[0][0]
+            "Verifier finished successfully and is confident in the value {} {}",
+            self.transcript.values[0][0],
+            self.oracle.trust_message()
         );
 
         true
@@ -253,19 +338,33 @@ pub(crate) fn precompute<F: PrimeField>(vals: &[F]) -> Vec<F> {
         std::mem::swap(&mut old_table, &mut new_table);
     }
 
-    if n % 2 == 0 {table_1} else {table_2}
+    if n % 2 == 0 {
+        table_1
+    } else {
+        table_2
+    }
 }
 
 pub(crate) fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
     f_1: &SparseMultilinearExtension<F>,
     f_3: &MLE,
-    g: &[F],
+    g1: &[F],
+    g2: &[F],
+    alpha: F,
+    beta: F,
 ) -> Vec<F> {
     let v = f_3.num_vars();
     let le_indices_f1 = to_le_indices(f_1.num_vars);
     let le_indices_f3 = to_le_indices(v);
 
-    let table_g = precompute(g);
+    let table_g1 = precompute(g1);
+    let table_g2 = precompute(g2);
+    let table_g = table_g1
+        .iter()
+        .zip(table_g2.iter())
+        .map(|(x, y)| alpha * *x + beta * *y)
+        .collect::<Vec<F>>();
+
     let mut ahg = vec![F::zero(); 1 << v];
 
     for (idx_le, val) in f_1.evaluations.iter() {

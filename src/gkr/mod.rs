@@ -1,10 +1,16 @@
-use ark_poly::evaluations::multivariate::{DenseMultilinearExtension, MultilinearExtension};
+use ark_poly::{
+    evaluations::multivariate::{DenseMultilinearExtension, MultilinearExtension},
+    SparseMultilinearExtension,
+};
 use std::marker::PhantomData;
 
 use ark_ff::PrimeField;
 
-pub mod parties;
+use crate::parties::to_le_indices;
 
+// pub mod parties;
+
+#[derive(Debug)]
 pub struct Wiring {
     curr_index: usize,
     left: usize,
@@ -21,6 +27,7 @@ impl Wiring {
     }
 }
 
+#[derive(Debug)]
 pub struct Layer {
     pub num_vars: usize,
     pub add: Vec<Wiring>,
@@ -34,11 +41,42 @@ impl Layer {
     }
 }
 
-impl<F: PrimeField> Into<[DenseMultilinearExtension<F>; 2]> for Layer {
-    fn into(self) -> [DenseMultilinearExtension<F>; 2] {
-        let add_mle = DenseMultilinearExtension::from_evaluations_vec(self.num_vars, self.add);
-        let mul_mle = DenseMultilinearExtension::from_evaluations_vec(self.num_vars, self.mul);
-        unimplemented!()
+// TODO - implement the circuit conversion into MLEs
+impl<F: PrimeField> Into<[SparseMultilinearExtension<F>; 2]> for Layer {
+    fn into(self) -> [SparseMultilinearExtension<F>; 2] {
+        // Assume uniform circuit sizes for now
+        let le_indices = to_le_indices(self.num_vars);
+        let d = self.num_vars / 3;
+        println!("d: {}", d);
+        println!("le_indices: {:?}", le_indices);
+        println!("add: {:?}", self.add);
+        let add_indices: Vec<usize> = self
+            .add
+            .iter()
+            .map(|w| {
+                // construct the index from curr_index, left, right
+                let index_be: usize = w.curr_index << (2 * d) + w.left << (d) + w.right;
+                le_indices[index_be]
+                // index
+            })
+            .collect();
+        let add_evals: Vec<(usize, F)> = add_indices.iter().map(|i| (*i, F::one())).collect();
+        let add_mle = SparseMultilinearExtension::from_evaluations(self.num_vars, &add_evals);
+        // same for mul
+        let mul_indices: Vec<usize> = self
+            .mul
+            .iter()
+            .map(|w| {
+                // construct the index from curr_index, left, right
+                let index_be: usize = w.curr_index << (2 * d) + w.left << (d) + w.right;
+                le_indices[index_be]
+                // index
+            })
+            .collect();
+        let mul_evals: Vec<(usize, F)> = mul_indices.iter().map(|i| (*i, F::one())).collect();
+        let mul_mle = SparseMultilinearExtension::from_evaluations(self.num_vars, &mul_evals);
+        // return both
+        [add_mle, mul_mle]
     }
 }
 
@@ -59,7 +97,6 @@ impl<F: PrimeField> UniformCircuit<F> {
 
     // not as in the GKR protocol - plain circuit evaluation
     fn evaluate(&self, x: Vec<F>) -> Vec<Vec<F>> {
-
         let mut evals = Vec::new();
 
         let mut last_layer = x;
@@ -88,7 +125,7 @@ impl<F: PrimeField> UniformCircuit<F> {
             }
 
             evals.push(new_layer.clone());
-            
+
             last_layer = new_layer;
         }
 
@@ -155,8 +192,8 @@ mod test {
         let mul0_0 = Wiring::new(0, 0, 1);
         let mul0_1 = Wiring::new(1, 2, 3);
 
-        let layer_0 = Layer::new(Vec::new(), vec![mul0_0, mul0_1]); 
+        let layer_0 = Layer::new(Vec::new(), vec![mul0_0, mul0_1]);
 
-        let mles: [DenseMultilinearExtension<Fq>; 2] = layer_0.into();
+        let mles: [SparseMultilinearExtension<Fq>; 2] = layer_0.into();
     }
 }
