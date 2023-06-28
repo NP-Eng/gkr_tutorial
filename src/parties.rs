@@ -1,6 +1,4 @@
-use std::iter::zip;
 
-use ark_bls12_381::g2;
 use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
