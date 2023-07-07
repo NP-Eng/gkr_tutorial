@@ -87,10 +87,10 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
 
         for i in 0..d {
             println!("layer {} of {}", i, d);
-            let w_iplus1_mle = DenseMultilinearExtension::from_evaluations_vec(s, w[i + 1].clone());
+            let w_iplus1_mle = DenseMultilinearExtension::from_evaluations_vec(s, w[i].clone());
 
             let [add_i_mle, mul_i_mle]: [SparseMultilinearExtension<F>; 2] =
-                (&self.circuit.layers[i + 1]).into();
+                (&self.circuit.layers[i]).into();
 
             // TODO lots of cloning here, can we do better?
             let f_i_1 = (
