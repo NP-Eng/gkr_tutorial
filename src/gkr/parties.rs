@@ -67,7 +67,7 @@ impl<F: PrimeField + Absorb, const D: usize> Prover<F, D> {
 }
 
 impl<F: PrimeField + Absorb, const D: usize> Prover<F, D> {
-    fn run(&mut self, x: Vec<F>) -> Transcript<F> {
+    pub fn run(&mut self, x: Vec<F>) -> Transcript<F> {
         let k = D;
         let identically_one =
             DenseMultilinearExtension::from_evaluations_vec(k, vec![F::one(); 1 << k]);
