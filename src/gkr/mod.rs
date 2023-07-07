@@ -46,7 +46,7 @@ impl<const d: usize> Layer<d> {
 }
 
 // TODO - implement the circuit conversion into MLEs
-impl<F: PrimeField, const d: usize> Into<[SparseMultilinearExtension<F>; 2]> for Layer<d> {
+impl<F: PrimeField, const d: usize> Into<[SparseMultilinearExtension<F>; 2]> for &Layer<d> {
     fn into(self) -> [SparseMultilinearExtension<F>; 2] {
         // Assume uniform circuit sizes for now
         let le_indices = to_le_indices(3 * d);
@@ -191,6 +191,6 @@ mod test {
 
         let layer_0 = Layer::<2>::new(Vec::new(), vec![mul0_0, mul0_1]);
 
-        let mles: [SparseMultilinearExtension<Fq>; 2] = layer_0.into();
+        let mles: [SparseMultilinearExtension<Fq>; 2] = (&layer_0).into();
     }
 }
