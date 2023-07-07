@@ -65,6 +65,11 @@ mod test {
 
     #[test]
     fn test_gkr() {
-        let gkr_prover = Prover::<Fq, 2>::new(make_test_circuit(), test_sponge());
+        let mut gkr_prover = Prover::<Fq, 2>::new(make_test_circuit(), test_sponge());
+        let circuit_input = vec![3, 2, 3, 1]
+            .iter()
+            .map(|x| Fq::from(*x as u64))
+            .collect();
+        gkr_prover.run(circuit_input);
     }
 }
