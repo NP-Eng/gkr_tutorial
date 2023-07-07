@@ -14,6 +14,14 @@ pub struct Product<F: PrimeField, MLE: MultilinearExtension<F>>(
     pub MLE,
 );
 
+impl<F: PrimeField, MLE: MultilinearExtension<F>> From<(SparseMultilinearExtension<F>, MLE, MLE)>
+    for Product<F, MLE>
+{
+    fn from(tuple: (SparseMultilinearExtension<F>, MLE, MLE)) -> Self {
+        Self(tuple.0, tuple.1, tuple.2)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SumOfProducts<F: PrimeField, MLE: MultilinearExtension<F>> {
     // for add:
@@ -21,6 +29,14 @@ pub struct SumOfProducts<F: PrimeField, MLE: MultilinearExtension<F>> {
     // 2nd: [alpha * add(g1, x, y) + beta * add(g2, x, y)] * 1 * f3(y) +
     // 3rd [alpha * mul(g1, x, y) + beta * mul(g2, x, y)] * f2(x) * f3(y)
     pub terms: Vec<Product<F, MLE>>,
+}
+
+impl<F: PrimeField, MLE: MultilinearExtension<F>> From<Vec<Product<F, MLE>>>
+    for SumOfProducts<F, MLE>
+{
+    fn from(terms: Vec<Product<F, MLE>>) -> Self {
+        Self { terms }
+    }
 }
 
 pub struct Prover<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> {
