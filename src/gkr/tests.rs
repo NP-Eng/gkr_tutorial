@@ -2,7 +2,10 @@
 mod test {
 
     use crate::{
-        gkr::{parties::Prover, *},
+        gkr::{
+            parties::{Prover, Verifier},
+            *,
+        },
         utils::test_sponge,
     };
     use ark_bls12_381::Fq;
@@ -67,6 +70,10 @@ mod test {
             .iter()
             .map(|x| Fq::from(*x as u64))
             .collect();
-        gkr_prover.run(circuit_input);
+        let transcript = gkr_prover.run(circuit_input);
+
+        let mut gkr_verifier =
+            Verifier::<Fq, 2>::new(make_test_circuit(), test_sponge(), transcript);
+        assert!(gkr_verifier.run());
     }
 }

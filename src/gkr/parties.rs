@@ -55,7 +55,6 @@ pub struct Prover<F: PrimeField + Absorb, const s: usize> {
     transcript: Transcript<F>,
 }
 
-// new prover
 impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
     pub fn new(circuit: UniformCircuit<F, s>, sponge: PoseidonSponge<F>) -> Self {
         Self {
@@ -135,6 +134,18 @@ pub struct Verifier<F: PrimeField + Absorb, const s: usize> {
 
 // impl run for the verifier
 impl<F: PrimeField + Absorb, const s: usize> Verifier<F, s> {
+    pub fn new(
+        circuit: UniformCircuit<F, s>,
+        sponge: PoseidonSponge<F>,
+        transcript: Transcript<F>,
+    ) -> Self {
+        Self {
+            circuit,
+            sponge,
+            transcript,
+        }
+    }
+
     pub fn run(&mut self) -> bool {
         true
     }
