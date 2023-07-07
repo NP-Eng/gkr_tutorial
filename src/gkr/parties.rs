@@ -68,14 +68,16 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
 
 impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
     pub fn run(&mut self, x: Vec<F>) -> Transcript<F> {
-        let k = s;
+        // number of layers
+        let d = self.circuit.layers.len();
+
         let identically_one =
-            DenseMultilinearExtension::from_evaluations_vec(k, vec![F::one(); 1 << k]);
+            DenseMultilinearExtension::from_evaluations_vec(s, vec![F::one(); 1 << s]);
 
         // compute all the layers
         let w = self.circuit.evaluate(x);
         // TODO provably need to go in reverse index order for w, since the input layer is at index 0
-        let r_0 = self.transcript.update(w[0].clone(), &mut self.sponge, 1);
+        let r_0 = self.transcript.update(w[0].clone(), &mut self.sponge, s);
 
         let mut alpha = F::one();
         let mut beta = F::zero();
@@ -83,8 +85,9 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
         let mut u_i = r_0.clone();
         let mut v_i = r_0;
 
-        for i in 0..k {
-            let w_iplus1_mle = DenseMultilinearExtension::from_evaluations_vec(k, w[i + 1].clone());
+        for i in 0..d {
+            println!("layer {} of {}", i, d);
+            let w_iplus1_mle = DenseMultilinearExtension::from_evaluations_vec(s, w[i + 1].clone());
 
             let [add_i_mle, mul_i_mle]: [SparseMultilinearExtension<F>; 2] =
                 (&self.circuit.layers[i + 1]).into();
@@ -104,7 +107,7 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
             );
             let sumcheck_transcript = sumcheck_prover.run(&u_i, &v_i, alpha, beta);
             // the first half of the transcript is b*, the second is c*
-            let (b_star, c_star) = sumcheck_transcript.challenges.split_at(k / 2);
+            let (b_star, c_star) = sumcheck_transcript.challenges.split_at((1 << s) / 2);
 
             let w_b_star = w_iplus1_mle.evaluate(&b_star).unwrap();
             let w_c_star = w_iplus1_mle.evaluate(&c_star).unwrap();
