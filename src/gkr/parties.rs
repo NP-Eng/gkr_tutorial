@@ -49,10 +49,21 @@ impl<F: PrimeField + Absorb> Transcript<F> {
         true
     }
 }
-struct Prover<F: PrimeField + Absorb, const d: usize> {
+pub struct Prover<F: PrimeField + Absorb, const d: usize> {
     circuit: UniformCircuit<F, d>,
     sponge: PoseidonSponge<F>,
     transcript: Transcript<F>,
+}
+
+// new prover
+impl<F: PrimeField + Absorb, const d: usize> Prover<F, d> {
+    pub fn new(circuit: UniformCircuit<F, d>, sponge: PoseidonSponge<F>) -> Self {
+        Self {
+            circuit,
+            sponge,
+            transcript: Transcript::new(),
+        }
+    }
 }
 
 impl<F: PrimeField + Absorb, const d: usize> Prover<F, d> {

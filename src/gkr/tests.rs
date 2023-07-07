@@ -1,11 +1,14 @@
 #[cfg(test)]
 mod test {
 
-    use crate::gkr::*;
+    use crate::{
+        gkr::{parties::Prover, *},
+        utils::test_sponge,
+    };
     use ark_bls12_381::Fq;
+    use ark_crypto_primitives::sponge::Absorb;
 
-    #[test]
-    fn simple_circuit() {
+    fn make_test_circuit<F: PrimeField + Absorb>() -> UniformCircuit<F, 2> {
         // example from Thaler's book p. 60, bottom - one gate changed for addition
 
         // mul, layer 0 (output)
@@ -27,8 +30,13 @@ mod test {
 
         let layer_1 = Layer::new(vec![add1_3], vec![mul1_0, mul1_1, mul1_2]);
 
-        let circuit = UniformCircuit::<Fq, 2>::new(vec![layer_0, layer_1]);
+        let circuit = UniformCircuit::<F, 2>::new(vec![layer_0, layer_1]);
+        circuit
+    }
 
+    #[test]
+    fn simple_circuit() {
+        let circuit = make_test_circuit::<Fq>();
         let computed_out = circuit.evaluate(
             vec![3, 2, 3, 1]
                 .iter()
@@ -53,5 +61,10 @@ mod test {
         let layer_0 = Layer::<2>::new(Vec::new(), vec![mul0_0, mul0_1]);
 
         let mles: [SparseMultilinearExtension<Fq>; 2] = (&layer_0).into();
+    }
+
+    #[test]
+    fn test_gkr() {
+        let gkr_prover = Prover::<Fq, 2>::new(make_test_circuit(), test_sponge());
     }
 }
