@@ -1,7 +1,4 @@
-use ark_poly::{
-    evaluations::multivariate::{DenseMultilinearExtension, MultilinearExtension},
-    SparseMultilinearExtension,
-};
+use ark_poly::SparseMultilinearExtension;
 use std::marker::PhantomData;
 
 use ark_ff::PrimeField;
@@ -39,18 +36,18 @@ pub struct Layer<const s: usize> {
 }
 
 impl<const s: usize> Layer<s> {
-    fn new(add: Vec<Wiring<s>>, mul: Vec<Wiring<s>>) -> Self {
+    pub(crate) fn new(add: Vec<Wiring<s>>, mul: Vec<Wiring<s>>) -> Self {
         // let num_vars = &add.len() + &mul.len();
         Self { add, mul }
     }
 }
 
 // TODO - implement the circuit conversion into MLEs
-impl<F: PrimeField, const s: usize> Into<[SparseMultilinearExtension<F>; 2]> for &Layer<s> {
-    fn into(self) -> [SparseMultilinearExtension<F>; 2] {
+impl<F: PrimeField, const s: usize> From<&Layer<s>> for [SparseMultilinearExtension<F>; 2] {
+    fn from(val: &Layer<s>) -> Self {
         // Assume uniform circuit sizes for now
         let le_indices = to_le_indices(3 * s);
-        let add_indices: Vec<usize> = self
+        let add_indices: Vec<usize> = val
             .add
             .iter()
             .map(|w| {
@@ -63,7 +60,7 @@ impl<F: PrimeField, const s: usize> Into<[SparseMultilinearExtension<F>; 2]> for
         let add_evals: Vec<(usize, F)> = add_indices.iter().map(|i| (*i, F::one())).collect();
         let add_mle = SparseMultilinearExtension::from_evaluations(3 * s, &add_evals);
         // same for mul
-        let mul_indices: Vec<usize> = self
+        let mul_indices: Vec<usize> = val
             .mul
             .iter()
             .map(|w| {

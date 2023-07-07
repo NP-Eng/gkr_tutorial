@@ -6,7 +6,7 @@ use ark_poly::{
 };
 
 use super::{parties::Transcript as SC_Transcript, UniformCircuit};
-use crate::parties::{Product, Prover as SumcheckProver};
+use crate::parties::Prover as SumcheckProver;
 
 #[derive(Clone, Debug)]
 pub struct Transcript<F: PrimeField + Absorb> {
@@ -109,8 +109,8 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
             // the first half of the transcript is b*, the second is c*
             let (b_star, c_star) = sumcheck_transcript.challenges.split_at((1 << s) / 2);
 
-            let w_b_star = w_iplus1_mle.evaluate(&b_star).unwrap();
-            let w_c_star = w_iplus1_mle.evaluate(&c_star).unwrap();
+            let w_b_star = w_iplus1_mle.evaluate(b_star).unwrap();
+            let w_c_star = w_iplus1_mle.evaluate(c_star).unwrap();
 
             u_i = b_star.to_vec();
             v_i = c_star.to_vec();
@@ -127,7 +127,7 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
     }
 }
 
-struct Verifier<F: PrimeField + Absorb, const s: usize> {
+pub struct Verifier<F: PrimeField + Absorb, const s: usize> {
     circuit: UniformCircuit<F, s>,
     sponge: PoseidonSponge<F>,
     transcript: Transcript<F>,
@@ -135,7 +135,7 @@ struct Verifier<F: PrimeField + Absorb, const s: usize> {
 
 // impl run for the verifier
 impl<F: PrimeField + Absorb, const s: usize> Verifier<F, s> {
-    fn run(&mut self) -> bool {
+    pub fn run(&mut self) -> bool {
         true
     }
 }

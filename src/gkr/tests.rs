@@ -30,8 +30,7 @@ mod test {
 
         let layer_1 = Layer::new(vec![add1_3], vec![mul1_0, mul1_1, mul1_2]);
 
-        let circuit = UniformCircuit::<F, 2>::new(vec![layer_0, layer_1]);
-        circuit
+        UniformCircuit::<F, 2>::new(vec![layer_0, layer_1])
     }
 
     #[test]
