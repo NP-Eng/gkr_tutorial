@@ -55,12 +55,10 @@ mod test {
 
     #[test]
     fn layer_to_mles() {
-        let mul0_0 = Wiring::new(0, 0, 1);
-        let mul0_1 = Wiring::new(1, 2, 3);
-
-        let layer_0 = Layer::<2>::new(Vec::new(), vec![mul0_0, mul0_1]);
-
-        let mles: [SparseMultilinearExtension<Fq>; 2] = (&layer_0).into();
+        let circuit = make_test_circuit::<Fq>();
+        for layer in circuit.layers.iter() {
+            let _: [SparseMultilinearExtension<Fq>; 2] = layer.into();
+        }
     }
 
     #[test]

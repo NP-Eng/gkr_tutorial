@@ -50,16 +50,12 @@ impl<F: PrimeField, const D: usize> Into<[SparseMultilinearExtension<F>; 2]> for
     fn into(self) -> [SparseMultilinearExtension<F>; 2] {
         // Assume uniform circuit sizes for now
         let le_indices = to_le_indices(3 * D);
-        // let D = self.num_vars / 3;
-        println!("D: {}", D);
-        println!("le_indices: {:?}", le_indices);
-        println!("add: {:?}", self.add);
         let add_indices: Vec<usize> = self
             .add
             .iter()
             .map(|w| {
                 // construct the index from curr_index, left, right
-                let index_be: usize = w.curr_index << (2 * D) + w.left << (D) + w.right;
+                let index_be: usize = (w.curr_index << (2 * D)) + (w.left << (D)) + w.right;
                 le_indices[index_be]
                 // index
             })
