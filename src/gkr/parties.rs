@@ -49,15 +49,15 @@ impl<F: PrimeField + Absorb> Transcript<F> {
         true
     }
 }
-pub struct Prover<F: PrimeField + Absorb, const D: usize> {
-    circuit: UniformCircuit<F, D>,
+pub struct Prover<F: PrimeField + Absorb, const s: usize> {
+    circuit: UniformCircuit<F, s>,
     sponge: PoseidonSponge<F>,
     transcript: Transcript<F>,
 }
 
 // new prover
-impl<F: PrimeField + Absorb, const D: usize> Prover<F, D> {
-    pub fn new(circuit: UniformCircuit<F, D>, sponge: PoseidonSponge<F>) -> Self {
+impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
+    pub fn new(circuit: UniformCircuit<F, s>, sponge: PoseidonSponge<F>) -> Self {
         Self {
             circuit,
             sponge,
@@ -66,9 +66,9 @@ impl<F: PrimeField + Absorb, const D: usize> Prover<F, D> {
     }
 }
 
-impl<F: PrimeField + Absorb, const D: usize> Prover<F, D> {
+impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
     pub fn run(&mut self, x: Vec<F>) -> Transcript<F> {
-        let k = D;
+        let k = s;
         let identically_one =
             DenseMultilinearExtension::from_evaluations_vec(k, vec![F::one(); 1 << k]);
 
@@ -124,14 +124,14 @@ impl<F: PrimeField + Absorb, const D: usize> Prover<F, D> {
     }
 }
 
-struct Verifier<F: PrimeField + Absorb, const D: usize> {
-    circuit: UniformCircuit<F, D>,
+struct Verifier<F: PrimeField + Absorb, const s: usize> {
+    circuit: UniformCircuit<F, s>,
     sponge: PoseidonSponge<F>,
     transcript: Transcript<F>,
 }
 
 // impl run for the verifier
-impl<F: PrimeField + Absorb, const D: usize> Verifier<F, D> {
+impl<F: PrimeField + Absorb, const s: usize> Verifier<F, s> {
     fn run(&mut self) -> bool {
         true
     }

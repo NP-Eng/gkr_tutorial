@@ -12,17 +12,17 @@ pub mod parties;
 mod tests;
 
 #[derive(Debug)]
-pub struct Wiring<const D: usize> {
+pub struct Wiring<const s: usize> {
     curr_index: usize,
     left: usize,
     right: usize,
 }
 
-impl<const D: usize> Wiring<D> {
+impl<const s: usize> Wiring<s> {
     fn new(curr_index: usize, left: usize, right: usize) -> Self {
-        assert!(curr_index < 1 << D);
-        assert!(left < 1 << D);
-        assert!(right < 1 << D);
+        assert!(curr_index < 1 << s);
+        assert!(left < 1 << s);
+        assert!(right < 1 << s);
         Self {
             curr_index,
             left,
@@ -32,66 +32,66 @@ impl<const D: usize> Wiring<D> {
 }
 
 #[derive(Debug)]
-pub struct Layer<const D: usize> {
+pub struct Layer<const s: usize> {
     // pub num_vars: usize,
-    pub add: Vec<Wiring<D>>,
-    pub mul: Vec<Wiring<D>>,
+    pub add: Vec<Wiring<s>>,
+    pub mul: Vec<Wiring<s>>,
 }
 
-impl<const D: usize> Layer<D> {
-    fn new(add: Vec<Wiring<D>>, mul: Vec<Wiring<D>>) -> Self {
+impl<const s: usize> Layer<s> {
+    fn new(add: Vec<Wiring<s>>, mul: Vec<Wiring<s>>) -> Self {
         // let num_vars = &add.len() + &mul.len();
         Self { add, mul }
     }
 }
 
 // TODO - implement the circuit conversion into MLEs
-impl<F: PrimeField, const D: usize> Into<[SparseMultilinearExtension<F>; 2]> for &Layer<D> {
+impl<F: PrimeField, const s: usize> Into<[SparseMultilinearExtension<F>; 2]> for &Layer<s> {
     fn into(self) -> [SparseMultilinearExtension<F>; 2] {
         // Assume uniform circuit sizes for now
-        let le_indices = to_le_indices(3 * D);
+        let le_indices = to_le_indices(3 * s);
         let add_indices: Vec<usize> = self
             .add
             .iter()
             .map(|w| {
                 // construct the index from curr_index, left, right
-                let index_be: usize = (w.curr_index << (2 * D)) + (w.left << (D)) + w.right;
+                let index_be: usize = (w.curr_index << (2 * s)) + (w.left << (s)) + w.right;
                 le_indices[index_be]
                 // index
             })
             .collect();
         let add_evals: Vec<(usize, F)> = add_indices.iter().map(|i| (*i, F::one())).collect();
-        let add_mle = SparseMultilinearExtension::from_evaluations(3 * D, &add_evals);
+        let add_mle = SparseMultilinearExtension::from_evaluations(3 * s, &add_evals);
         // same for mul
         let mul_indices: Vec<usize> = self
             .mul
             .iter()
             .map(|w| {
                 // construct the index from curr_index, left, right
-                let index_be: usize = (w.curr_index << (2 * D)) + (w.left << (D)) + w.right;
+                let index_be: usize = (w.curr_index << (2 * s)) + (w.left << (s)) + w.right;
                 le_indices[index_be]
                 // index
             })
             .collect();
         let mul_evals: Vec<(usize, F)> = mul_indices.iter().map(|i| (*i, F::one())).collect();
-        let mul_mle = SparseMultilinearExtension::from_evaluations(3 * D, &mul_evals);
+        let mul_mle = SparseMultilinearExtension::from_evaluations(3 * s, &mul_evals);
         // return both
         [add_mle, mul_mle]
     }
 }
 
-pub struct UniformCircuit<F, const D: usize> {
-    layers: Vec<Layer<D>>,
+pub struct UniformCircuit<F, const s: usize> {
+    layers: Vec<Layer<s>>,
     phantom: PhantomData<F>,
 }
 
-impl<F: PrimeField, const D: usize> UniformCircuit<F, D> {
-    /// Pads each layer to have 1<<D elements, so that we have a uniform circuit representation. We do this by adding padding addition gates
-    pub fn new(layers: Vec<Layer<D>>) -> Self {
+impl<F: PrimeField, const s: usize> UniformCircuit<F, s> {
+    /// Pads each layer to have 1<<s elements, so that we have a uniform circuit representation. We do this by adding padding addition gates
+    pub fn new(layers: Vec<Layer<s>>) -> Self {
         let mut layers = layers;
         for layer in layers.iter_mut() {
             let num_gates = layer.add.len() + layer.mul.len();
-            let diff = (1 << D) - (num_gates);
+            let diff = (1 << s) - (num_gates);
             for i in 0..diff {
                 layer.add.push(Wiring::new(i + num_gates, 0, 0));
             }
@@ -104,7 +104,7 @@ impl<F: PrimeField, const D: usize> UniformCircuit<F, D> {
     }
 
     /// Plain circuit evaluation given the input x
-    /// Asserts that each layer is uniform with 1<<D evaluations
+    /// Asserts that each layer is uniform with 1<<s evaluations
     pub fn evaluate(&self, x: Vec<F>) -> Vec<Vec<F>> {
         let mut evals = Vec::new();
 
@@ -133,7 +133,7 @@ impl<F: PrimeField, const D: usize> UniformCircuit<F, D> {
                 new_layer[*curr_index] = last_layer[*left] * last_layer[*right];
             }
 
-            assert_eq!(new_layer.len(), 1 << D, "non-uniform circuit");
+            assert_eq!(new_layer.len(), 1 << s, "non-uniform circuit");
             evals.push(new_layer.clone());
 
             last_layer = new_layer;
