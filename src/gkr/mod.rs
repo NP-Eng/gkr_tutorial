@@ -9,7 +9,7 @@ use ark_ff::PrimeField;
 use crate::parties::to_le_indices;
 
 // pub mod parties;
-mod tests;
+// mod tests;
 
 #[derive(Debug)]
 pub struct Wiring<const d: usize> {
@@ -20,9 +20,9 @@ pub struct Wiring<const d: usize> {
 
 impl<const d: usize> Wiring<d> {
     fn new(curr_index: usize, left: usize, right: usize) -> Self {
-        assert!(curr_index < 1<<d);
-        assert!(left < 1<<d);
-        assert!(right < 1<<d);
+        assert!(curr_index < 1 << d);
+        assert!(left < 1 << d);
+        assert!(right < 1 << d);
         Self {
             curr_index,
             left,
@@ -34,12 +34,12 @@ impl<const d: usize> Wiring<d> {
 #[derive(Debug)]
 pub struct Layer<const d: usize> {
     // pub num_vars: usize,
-    pub add: Vec<Wiring::<d>>,
-    pub mul: Vec<Wiring::<d>>,
+    pub add: Vec<Wiring<d>>,
+    pub mul: Vec<Wiring<d>>,
 }
 
 impl<const d: usize> Layer<d> {
-    fn new(add: Vec<Wiring::<d>>, mul: Vec<Wiring::<d>>) -> Self {
+    fn new(add: Vec<Wiring<d>>, mul: Vec<Wiring<d>>) -> Self {
         // let num_vars = &add.len() + &mul.len();
         Self { add, mul }
     }
@@ -49,7 +49,7 @@ impl<const d: usize> Layer<d> {
 impl<F: PrimeField, const d: usize> Into<[SparseMultilinearExtension<F>; 2]> for Layer<d> {
     fn into(self) -> [SparseMultilinearExtension<F>; 2] {
         // Assume uniform circuit sizes for now
-        let le_indices = to_le_indices(3*d);
+        let le_indices = to_le_indices(3 * d);
         // let d = self.num_vars / 3;
         println!("d: {}", d);
         println!("le_indices: {:?}", le_indices);
@@ -65,7 +65,7 @@ impl<F: PrimeField, const d: usize> Into<[SparseMultilinearExtension<F>; 2]> for
             })
             .collect();
         let add_evals: Vec<(usize, F)> = add_indices.iter().map(|i| (*i, F::one())).collect();
-        let add_mle = SparseMultilinearExtension::from_evaluations(3*d, &add_evals);
+        let add_mle = SparseMultilinearExtension::from_evaluations(3 * d, &add_evals);
         // same for mul
         let mul_indices: Vec<usize> = self
             .mul
@@ -78,7 +78,7 @@ impl<F: PrimeField, const d: usize> Into<[SparseMultilinearExtension<F>; 2]> for
             })
             .collect();
         let mul_evals: Vec<(usize, F)> = mul_indices.iter().map(|i| (*i, F::one())).collect();
-        let mul_mle = SparseMultilinearExtension::from_evaluations(3*d, &mul_evals);
+        let mul_mle = SparseMultilinearExtension::from_evaluations(3 * d, &mul_evals);
         // return both
         [add_mle, mul_mle]
     }
@@ -137,10 +137,7 @@ impl<F: PrimeField, const d: usize> UniformCircuit<F, d> {
     }
 }
 
-/* Sanity checks
-    - wiring indices in correct range
-*/
-
+#[cfg(test)]
 mod test {
 
     use super::*;
@@ -169,7 +166,7 @@ mod test {
 
         let layer_1 = Layer::new(vec![add1_3], vec![mul1_0, mul1_1, mul1_2]);
 
-        let circuit = UniformCircuit::<Fq>::new(vec![layer_0, layer_1]);
+        let circuit = UniformCircuit::<Fq, 2>::new(vec![layer_0, layer_1]);
 
         let computed_out = circuit.evaluate(
             vec![3, 2, 3, 1]
@@ -179,14 +176,12 @@ mod test {
         );
 
         assert_eq!(
-            computed_out[0],
+            *computed_out.last().unwrap(),
             vec![36, 12]
                 .iter()
                 .map(|x| Fq::from(*x as u64))
                 .collect::<Vec<Fq>>()
         );
-
-        println!("{:?}", computed_out);
     }
 
     #[test]
@@ -194,7 +189,7 @@ mod test {
         let mul0_0 = Wiring::new(0, 0, 1);
         let mul0_1 = Wiring::new(1, 2, 3);
 
-        let layer_0 = Layer::new(Vec::new(), vec![mul0_0, mul0_1]);
+        let layer_0 = Layer::<2>::new(Vec::new(), vec![mul0_0, mul0_1]);
 
         let mles: [SparseMultilinearExtension<Fq>; 2] = layer_0.into();
     }
