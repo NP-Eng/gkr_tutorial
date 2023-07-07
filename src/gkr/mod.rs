@@ -90,7 +90,7 @@ pub struct UniformCircuit<F, const D: usize> {
 }
 
 impl<F: PrimeField, const D: usize> UniformCircuit<F, D> {
-    fn new(layers: Vec<Layer<D>>) -> Self {
+    pub fn new(layers: Vec<Layer<D>>) -> Self {
         Self {
             layers,
             phantom: PhantomData::<F>,
@@ -100,7 +100,7 @@ impl<F: PrimeField, const D: usize> UniformCircuit<F, D> {
     }
 
     // not as in the GKR protocol - plain circuit evaluation
-    fn evaluate(&self, x: Vec<F>) -> Vec<Vec<F>> {
+    pub fn evaluate(&self, x: Vec<F>) -> Vec<Vec<F>> {
         let mut evals = Vec::new();
 
         let mut last_layer = x;
