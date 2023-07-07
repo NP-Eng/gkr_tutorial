@@ -90,16 +90,25 @@ pub struct UniformCircuit<F, const D: usize> {
 }
 
 impl<F: PrimeField, const D: usize> UniformCircuit<F, D> {
+    /// Pads each layer to have 1<<D elements, so that we have a uniform circuit representation. We do this by adding padding addition gates
     pub fn new(layers: Vec<Layer<D>>) -> Self {
+        let mut layers = layers;
+        for layer in layers.iter_mut() {
+            let num_gates = layer.add.len() + layer.mul.len();
+            let diff = (1 << D) - (num_gates);
+            for i in 0..diff {
+                layer.add.push(Wiring::new(i + num_gates, 0, 0));
+            }
+        }
+
         Self {
             layers,
             phantom: PhantomData::<F>,
         }
-
-        // test indices
     }
 
-    // not as in the GKR protocol - plain circuit evaluation
+    /// Plain circuit evaluation given the input x
+    /// Asserts that each layer is uniform with 1<<D evaluations
     pub fn evaluate(&self, x: Vec<F>) -> Vec<Vec<F>> {
         let mut evals = Vec::new();
 
@@ -128,6 +137,7 @@ impl<F: PrimeField, const D: usize> UniformCircuit<F, D> {
                 new_layer[*curr_index] = last_layer[*left] * last_layer[*right];
             }
 
+            assert_eq!(new_layer.len(), 1 << D, "non-uniform circuit");
             evals.push(new_layer.clone());
 
             last_layer = new_layer;

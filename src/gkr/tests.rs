@@ -46,7 +46,7 @@ mod test {
 
         assert_eq!(
             *computed_out.last().unwrap(),
-            vec![36, 12]
+            vec![36, 12, 18, 18]
                 .iter()
                 .map(|x| Fq::from(*x as u64))
                 .collect::<Vec<Fq>>()
