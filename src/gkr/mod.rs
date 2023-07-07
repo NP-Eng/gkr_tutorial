@@ -8,8 +8,7 @@ use ark_ff::PrimeField;
 
 use crate::parties::to_le_indices;
 
-// pub mod parties;
-// mod tests;
+pub mod parties;
 
 #[derive(Debug)]
 pub struct Wiring<const d: usize> {
