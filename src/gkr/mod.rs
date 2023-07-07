@@ -9,6 +9,7 @@ use ark_ff::PrimeField;
 use crate::parties::to_le_indices;
 
 pub mod parties;
+mod tests;
 
 #[derive(Debug)]
 pub struct Wiring<const d: usize> {
@@ -133,63 +134,5 @@ impl<F: PrimeField, const d: usize> UniformCircuit<F, d> {
         }
 
         evals
-    }
-}
-
-#[cfg(test)]
-mod test {
-
-    use super::*;
-    use ark_bls12_381::Fq;
-
-    #[test]
-    fn simple_circuit() {
-        // example from Thaler's book p. 60, bottom - one gate changed for addition
-
-        // mul, layer 0 (output)
-        let mul0_0 = Wiring::new(0, 0, 1);
-        let mul0_1 = Wiring::new(1, 2, 3);
-
-        let layer_0 = Layer::new(Vec::new(), vec![mul0_0, mul0_1]);
-
-        // add, layer 0
-        // empty
-
-        // mul, layer 1
-        let mul1_0 = Wiring::new(0, 0, 0);
-        let mul1_1 = Wiring::new(1, 1, 1);
-        let mul1_2 = Wiring::new(2, 1, 2);
-
-        // add, layer 1
-        let add1_3 = Wiring::new(3, 3, 3);
-
-        let layer_1 = Layer::new(vec![add1_3], vec![mul1_0, mul1_1, mul1_2]);
-
-        let circuit = UniformCircuit::<Fq, 2>::new(vec![layer_0, layer_1]);
-
-        let computed_out = circuit.evaluate(
-            vec![3, 2, 3, 1]
-                .iter()
-                .map(|x| Fq::from(*x as u64))
-                .collect(),
-        );
-
-        assert_eq!(
-            *computed_out.last().unwrap(),
-            vec![36, 12]
-                .iter()
-                .map(|x| Fq::from(*x as u64))
-                .collect::<Vec<Fq>>()
-        );
-    }
-
-    #[test]
-    fn layer_to_mles() {
-        let mul0_0 = Wiring::new(0, 0, 1);
-        let mul0_1 = Wiring::new(1, 2, 3);
-
-        let layer_0 = Layer::<2>::new(Vec::new(), vec![mul0_0, mul0_1]);
-
-        let mles: [SparseMultilinearExtension<Fq>; 2] = (&layer_0).into();
     }
 }
