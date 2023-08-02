@@ -1,5 +1,6 @@
 #[allow(non_upper_case_globals)]
 pub mod gkr;
+pub mod oracles;
 pub mod parties;
 mod tests;
 mod utils;
