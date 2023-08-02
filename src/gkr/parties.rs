@@ -38,8 +38,7 @@ impl<F: PrimeField + Absorb> Transcript<F> {
         }
         self.proof.values.push(elems.to_vec());
 
-        let rs = sponge.squeeze_field_elements::<F>(n);
-        rs
+        sponge.squeeze_field_elements::<F>(n)
     }
 }
 pub struct Prover<F: PrimeField + Absorb, const s: usize> {
@@ -155,7 +154,7 @@ impl<F: PrimeField + Absorb, const s: usize> Verifier<F, s> {
 
         // verify the transcript
         let mut u_i = r_0.clone();
-        let mut v_i = r_0.clone();
+        let mut v_i = r_0;
 
         let mut alpha = F::one();
         let mut beta = F::zero();

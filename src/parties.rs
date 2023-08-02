@@ -352,7 +352,7 @@ pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F
 
     let mut verifier = Verifier::new(
         PolyOracle::<F, MLE>::new(simple_sum, g.to_vec()), // TODO: decide if passing & is enough
-        sponge.clone(),
+        sponge,
         proof,
     );
 
@@ -377,7 +377,7 @@ pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearEx
     // Need to use the same sponge, since it's initialized with random values
     let sponge = test_sponge();
 
-    let mut prover = Prover::new(simple_sum.clone(), sponge.clone());
+    let mut prover = Prover::new(simple_sum, sponge.clone());
 
     let (proof, random_challenges) = prover.run(g1, g2, alpha, beta);
 
@@ -395,7 +395,7 @@ pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearEx
 
     let gkr_oracle = GKROracle::new(gkr_sum, g1.to_vec(), g2.to_vec(), alpha, beta);
 
-    let mut verifier = Verifier::new(gkr_oracle, sponge.clone(), proof);
+    let mut verifier = Verifier::new(gkr_oracle, sponge, proof);
 
     assert!(verifier.run().0);
 }
@@ -419,7 +419,7 @@ pub fn run_sumcheck_protocol_combined_multiprod<
 
     let mut verifier = Verifier::new(
         CombinedPolyOracle::<F, MLE>::new(sum_of_products, g1.to_vec(), g2.to_vec(), alpha, beta),
-        sponge.clone(),
+        sponge,
         proof,
     );
 

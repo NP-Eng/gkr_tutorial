@@ -76,7 +76,7 @@ mod test {
         let transcript = gkr_prover.run(circuit_input);
 
         let mut gkr_verifier =
-            Verifier::<Fq, 2>::new(make_test_circuit(), sponge.clone(), transcript.proof);
+            Verifier::<Fq, 2>::new(make_test_circuit(), sponge, transcript.proof);
         assert!(gkr_verifier.run());
     }
 }

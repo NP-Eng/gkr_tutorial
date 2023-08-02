@@ -36,7 +36,7 @@ pub struct Layer<const s: usize> {
 }
 
 impl<const s: usize> Layer<s> {
-    pub(crate) fn new(add: Vec<Wiring<s>>, mul: Vec<Wiring<s>>) -> Self {
+    pub fn new(add: Vec<Wiring<s>>, mul: Vec<Wiring<s>>) -> Self {
         // let num_vars = &add.len() + &mul.len();
         Self { add, mul }
     }

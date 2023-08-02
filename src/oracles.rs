@@ -167,6 +167,6 @@ impl<F: PrimeField> Oracle<F> for GKROracle<F> {
     }
 
     fn trust_message(&self) -> String {
-        format!("assuming that f(b*) and f(c*) are from the prover")
+        "assuming that f(b*) and f(c*) are from the prover".to_string()
     }
 }

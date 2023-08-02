@@ -55,8 +55,7 @@ impl<F: PrimeField + Absorb> Transcript<F> {
         }
         self.proof.values.push(elements.to_vec());
 
-        let r = sponge.squeeze_field_elements::<F>(1)[0];
-        r
+        sponge.squeeze_field_elements::<F>(1)[0]
     }
 
     pub fn set_claim(&mut self, claimed_value: F) {
