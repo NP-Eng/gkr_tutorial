@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
     use crate::{
+        data_structures::{Product, SumOfProducts},
         parties::{
             initialise_phase_1 as init_phase_1_original,
             initialise_phase_2 as init_phase_2_original, run_sumcheck_protocol,
-            run_sumcheck_protocol_combined, run_sumcheck_protocol_combined_multiprod, Product,
-            SumOfProducts,
+            run_sumcheck_protocol_combined, run_sumcheck_protocol_combined_multiprod,
         },
         utils::usize_to_zxy,
         Fq,

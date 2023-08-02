@@ -2,7 +2,9 @@ use ark_ff::PrimeField;
 
 use ark_poly::MultilinearExtension;
 
-use crate::parties::{GKRVerifierProduct, GKRVerifierSumOfProducts, Product, SumOfProducts};
+use crate::data_structures::{
+    GKRVerifierProduct, GKRVerifierSumOfProducts, Product, SumOfProducts,
+};
 
 pub trait Oracle<F> {
     fn divinate(&self, x: &[F], y: &[F]) -> F;
