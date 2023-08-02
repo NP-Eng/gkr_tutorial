@@ -153,46 +153,68 @@ impl<F: PrimeField, MLE: MultilinearExtension<F>> Oracle<F> for CombinedPolyOrac
     }
 }
 
-struct GKROracle<F: PrimeField> {
-    f1: SparseMultilinearExtension<F>,
-    g: Vec<F>,
-    yb: F,
-    yc: F,
-    num_rounds: usize,
+struct GKROracle<F: PrimeField, MLE: MultilinearExtension<F>> {
+    sum_of_products: SumOfProducts<F, MLE>,
+    g1: Vec<F>,
+    g2: Vec<F>,
+    alpha: F,
+    beta: F,
+    w_u_i: F,
+    w_v_i: F,
 }
 
-impl<F: PrimeField> GKROracle<F> {
-    fn new(f1: SparseMultilinearExtension<F>, g: Vec<F>, yb: F, yc: F, num_rounds: usize) -> Self {
+impl<F: PrimeField, MLE: MultilinearExtension<F>> GKROracle<F, MLE> {
+    fn new(
+        sum_of_products: SumOfProducts<F, MLE>,
+        g1: Vec<F>,
+        g2: Vec<F>,
+        alpha: F,
+        beta: F,
+        w_u_i: F,
+        w_v_i: F,
+    ) -> Self {
         Self {
-            f1,
-            g,
-            yb,
-            yc,
-            num_rounds,
+            sum_of_products,
+            g1,
+            g2,
+            alpha,
+            beta,
+            w_u_i,
+            w_v_i,
         }
     }
 }
 
-impl<F: PrimeField> Oracle<F> for GKROracle<F> {
+impl<F: PrimeField, MLE: MultilinearExtension<F>> Oracle<F> for GKROracle<F, MLE> {
     fn divinate(&self, x: &[F], y: &[F]) -> F {
-        let mut zxy: Vec<F> = self.g.clone();
-        zxy.extend(x);
-        zxy.extend(y);
+        let mut sums = Vec::new();
 
-        self.f1.evaluate(&zxy).unwrap() * self.yb * self.yc
+        for (coeff, g) in vec![(self.alpha, self.g1.clone()), (self.beta, self.g2.clone())] {
+            let mut zxy: Vec<F> = g.clone();
+            zxy.extend(x);
+            zxy.extend(y);
+
+            let mut sum = F::zero();
+
+            // almost the same as in `CombinedPolyOracle`, but instead of using f2, f3, we use the provided values w_u_i, w_v_i.
+            for Product(f1, _, _) in &self.sum_of_products.terms {
+                sum += f1.evaluate(&zxy).unwrap() * self.w_u_i * self.w_v_i
+            }
+
+            sums.push(coeff * sum);
+        }
+
+        sums[0] + sums[1]
     }
 
-    // returns the number of variables of EACH of the two polynomials
-    // the total number of variables of the product is twice that
+    // returns the number of variables of the SparseMLE, minus the number of bits needed to represent "current" layer.
     fn num_rounds(&self) -> usize {
-        self.num_rounds
+        let Product(f1, _, _) = &self.sum_of_products.terms[0];
+        f1.num_vars() - self.g1.len()
     }
 
     fn trust_message(&self) -> String {
-        format!(
-            "assuming that f(b*) = {:?} and f(c*) = {:?}",
-            self.yb, self.yc
-        )
+        format!("assuming that f(b*) and f(c*) are from the prover")
     }
 }
 
@@ -530,15 +552,31 @@ pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearEx
     beta: F,
 ) {
     let simple_sum = SumOfProducts {
-        terms: vec![Product(f1, f2, f3)],
+        terms: vec![Product(f1, f2.clone(), f3.clone())],
     };
 
     let mut prover = Prover::new(simple_sum.clone(), test_sponge());
 
     let transcript = prover.run(g1, g2, alpha, beta);
 
+    let b_star = &transcript.challenges[..(transcript.challenges.len() / 2)];
+    let c_star = &transcript.challenges[(transcript.challenges.len() / 2)..];
+
+    let w_u_i = &f2.evaluate(b_star).unwrap();
+    let w_v_i = &f3.evaluate(c_star).unwrap();
+
+    let gkr_oracle = GKROracle::new(
+        simple_sum,
+        g1.to_vec(),
+        g2.to_vec(),
+        alpha,
+        beta,
+        *w_u_i,
+        *w_v_i,
+    );
+
     let mut verifier = Verifier {
-        oracle: CombinedPolyOracle::new(simple_sum, g1.to_vec(), g2.to_vec(), alpha, beta),
+        oracle: gkr_oracle,
         sponge: test_sponge(),
         transcript,
     };
