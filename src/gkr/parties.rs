@@ -166,7 +166,6 @@ impl<F: PrimeField + Absorb, const s: usize> Verifier<F, s> {
             let w_u_i = self.transcript.proof.values[i + 1][0];
             let w_v_i = self.transcript.proof.values[i + 1][1];
 
-            // the 2nd & 3rd element can be whatever, since we're only using the first in computation
             let f_i_1 = (add_i_mle.clone(), w_u_i, F::one());
             let f_i_2 = (add_i_mle, F::one(), w_v_i);
             let f_i_3 = (mul_i_mle, w_u_i, w_v_i);
