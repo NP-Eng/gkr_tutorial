@@ -27,13 +27,16 @@ pub(crate) fn test_sponge<F: PrimeField>() -> PoseidonSponge<F> {
     PoseidonSponge::new(&config)
 }
 
+/// `SumcheckProof` can be safely shared with the verifier in full.
 #[derive(Clone, Debug, Default)]
 pub struct SumcheckProof<F: PrimeField> {
     pub values: Vec<Vec<F>>,
-    pub random_challenges: Vec<F>,
     pub claim: Option<F>,
 }
 
+/// Each party will instantiate a `Transcript`.
+/// The prover will feed into the transcript the values of the polynomial, thus creating the `SumcheckProof`.
+/// The verifier will feed into the transcript the values received in `SumcheckProof`.
 #[derive(Clone, Debug)]
 pub struct Transcript<F: PrimeField + Absorb> {
     pub proof: SumcheckProof<F>,

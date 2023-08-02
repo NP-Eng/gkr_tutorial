@@ -115,7 +115,7 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
 
     // Algorithm 6 (Sumcheck GKR) adapted to a sum of products
     #[allow(non_snake_case)]
-    pub fn run(&mut self, g1: &[F], g2: &[F], alpha: F, beta: F) -> SumcheckProof<F> {
+    pub fn run(&mut self, g1: &[F], g2: &[F], alpha: F, beta: F) -> (SumcheckProof<F>, Vec<F>) {
         let Product(_, pol, _) = &self.sum_of_products.terms[0];
         let k: usize = pol.num_vars();
 
@@ -149,11 +149,10 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
         }
 
         let (_, v) = self.sumcheck_prod(&mut A_f1s, &mut A_f3_f2_us, k);
-        self.transcript.proof.random_challenges = [u, v].concat();
 
         println!("Prover finished successfully");
 
-        self.transcript.proof.clone()
+        (self.transcript.proof.clone(), [u, v].concat())
     }
 }
 
@@ -349,7 +348,7 @@ pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F
 
     let mut prover = Prover::new(simple_sum.clone(), sponge.clone());
 
-    let proof = prover.run(g, g, F::one(), F::zero());
+    let (proof, _) = prover.run(g, g, F::one(), F::zero());
 
     let mut verifier = Verifier::new(
         PolyOracle::<F, MLE>::new(simple_sum, g.to_vec()), // TODO: decide if passing & is enough
@@ -380,12 +379,11 @@ pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearEx
 
     let mut prover = Prover::new(simple_sum.clone(), sponge.clone());
 
-    let proof = prover.run(g1, g2, alpha, beta);
+    let (proof, random_challenges) = prover.run(g1, g2, alpha, beta);
 
-    let num_challenges = proof.random_challenges.len();
+    let num_challenges = random_challenges.len();
 
-    let (b_star, c_star) = proof.random_challenges.split_at(num_challenges / 2);
-    // let c_star = &transcript.challenges[(transcript.challenges.len() / 2)..];
+    let (b_star, c_star) = random_challenges.split_at(num_challenges / 2);
 
     let w_u_i = &f2.evaluate(b_star).unwrap();
     let w_v_i = &f3.evaluate(c_star).unwrap();
@@ -417,7 +415,7 @@ pub fn run_sumcheck_protocol_combined_multiprod<
     let sponge = test_sponge();
     let mut prover = Prover::new(sum_of_products.clone(), sponge.clone());
 
-    let proof = prover.run(g1, g2, alpha, beta);
+    let (proof, _) = prover.run(g1, g2, alpha, beta);
 
     let mut verifier = Verifier::new(
         CombinedPolyOracle::<F, MLE>::new(sum_of_products, g1.to_vec(), g2.to_vec(), alpha, beta),

@@ -67,7 +67,7 @@ mod test {
     fn test_gkr() {
         // Need to use the same sponge, since it's initialized with random values
         let sponge = test_sponge();
-        
+
         let mut gkr_prover = Prover::<Fq, 2>::new(make_test_circuit(), sponge.clone());
         let circuit_input = vec![3, 2, 3, 1]
             .iter()

@@ -18,6 +18,9 @@ pub struct GKRProof<F: PrimeField> {
     pub sumcheck_proofs: Vec<SumcheckProof<F>>,
 }
 
+/// Each party will instantiate a `Transcript`.
+/// The prover will feed into the transcript the GKR layer claims, and separately the sumcheck messages, thus creating the `GKRProof`.
+/// The verifier will feed into the transcript the values received in `GKRProof`.
 #[derive(Clone, Debug)]
 pub struct Transcript<F: PrimeField + Absorb> {
     pub proof: GKRProof<F>,
@@ -94,10 +97,11 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
                 vec![f_i_1.into(), f_i_2.into(), f_i_3.into()].into(),
                 self.sponge.clone(),
             );
-            let sumcheck_proof = sumcheck_prover.run(&u_i, &v_i, alpha, beta);
+            let (sumcheck_proof, random_sumcheck_challenges) =
+                sumcheck_prover.run(&u_i, &v_i, alpha, beta);
 
             // the first half of the transcript is b*, the second is c*
-            let (b_star, c_star) = sumcheck_proof.random_challenges.split_at((1 << s) / 2);
+            let (b_star, c_star) = random_sumcheck_challenges.split_at((1 << s) / 2);
 
             let w_b_star = w_iplus1_mle.evaluate(b_star).unwrap();
             let w_c_star = w_iplus1_mle.evaluate(c_star).unwrap();
