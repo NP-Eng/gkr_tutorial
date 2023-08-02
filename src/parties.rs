@@ -9,6 +9,16 @@ use crate::{
     utils::{interpolate_uni_poly, test_sponge, usize_to_zxy, Transcript},
 };
 
+/// Like `Product`, but f2, f3 aren't known to the verifier, only their evals at a certain point
+#[derive(Clone, Debug)]
+pub struct GKRVerifierProduct<F: PrimeField>(pub SparseMultilinearExtension<F>, pub F, pub F);
+
+impl<F: PrimeField> From<(SparseMultilinearExtension<F>, F, F)> for GKRVerifierProduct<F> {
+    fn from(tuple: (SparseMultilinearExtension<F>, F, F)) -> Self {
+        Self(tuple.0, tuple.1, tuple.2)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Product<F: PrimeField, MLE: MultilinearExtension<F>>(
     pub SparseMultilinearExtension<F>,
@@ -26,6 +36,21 @@ impl<F: PrimeField, MLE: MultilinearExtension<F>> From<(SparseMultilinearExtensi
             "f2 and f3 must have the same number of variables"
         );
         Self(tuple.0, tuple.1, tuple.2)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct GKRVerifierSumOfProducts<F: PrimeField> {
+    // for add:
+    // 1st: [alpha * add(g1, x, y) + beta * add(g2, x, y)] * f2(x) * 1 +
+    // 2nd: [alpha * add(g1, x, y) + beta * add(g2, x, y)] * 1 * f3(y) +
+    // 3rd [alpha * mul(g1, x, y) + beta * mul(g2, x, y)] * f2(x) * f3(y)
+    pub terms: Vec<GKRVerifierProduct<F>>,
+}
+
+impl<F: PrimeField> From<Vec<GKRVerifierProduct<F>>> for GKRVerifierSumOfProducts<F> {
+    fn from(terms: Vec<GKRVerifierProduct<F>>) -> Self {
+        Self { terms }
     }
 }
 
@@ -187,7 +212,15 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
 }
 
 impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
-    fn run(&mut self) -> bool {
+    pub fn new(oracle: O, sponge: PoseidonSponge<F>, transcript: Transcript<F>) -> Self {
+        Self {
+            oracle,
+            sponge,
+            transcript,
+        }
+    }
+
+    pub fn run(&mut self) -> bool {
         self.transcript.verify(&mut self.sponge);
 
         let v = self.oracle.num_rounds();
@@ -386,7 +419,7 @@ pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearEx
     beta: F,
 ) {
     let simple_sum = SumOfProducts {
-        terms: vec![Product(f1, f2.clone(), f3.clone())],
+        terms: vec![Product(f1.clone(), f2.clone(), f3.clone())],
     };
 
     let mut prover = Prover::new(simple_sum.clone(), test_sponge());
@@ -399,15 +432,12 @@ pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearEx
     let w_u_i = &f2.evaluate(b_star).unwrap();
     let w_v_i = &f3.evaluate(c_star).unwrap();
 
-    let gkr_oracle = GKROracle::new(
-        simple_sum,
-        g1.to_vec(),
-        g2.to_vec(),
-        alpha,
-        beta,
-        *w_u_i,
-        *w_v_i,
-    );
+    let gkr_prod = GKRVerifierProduct(f1, *w_u_i, *w_v_i);
+    let gkr_sum = GKRVerifierSumOfProducts {
+        terms: vec![gkr_prod],
+    };
+
+    let gkr_oracle = GKROracle::new(gkr_sum, g1.to_vec(), g2.to_vec(), alpha, beta);
 
     let mut verifier = Verifier {
         oracle: gkr_oracle,

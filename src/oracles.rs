@@ -2,7 +2,7 @@ use ark_ff::PrimeField;
 
 use ark_poly::MultilinearExtension;
 
-use crate::parties::{Product, SumOfProducts};
+use crate::parties::{GKRVerifierProduct, GKRVerifierSumOfProducts, Product, SumOfProducts};
 
 pub trait Oracle<F> {
     fn divinate(&self, x: &[F], y: &[F]) -> F;
@@ -108,25 +108,21 @@ impl<F: PrimeField, MLE: MultilinearExtension<F>> Oracle<F> for CombinedPolyOrac
     }
 }
 
-pub(crate) struct GKROracle<F: PrimeField, MLE: MultilinearExtension<F>> {
-    sum_of_products: SumOfProducts<F, MLE>,
+pub(crate) struct GKROracle<F: PrimeField> {
+    sum_of_products: GKRVerifierSumOfProducts<F>,
     g1: Vec<F>,
     g2: Vec<F>,
     alpha: F,
     beta: F,
-    w_u_i: F,
-    w_v_i: F,
 }
 
-impl<F: PrimeField, MLE: MultilinearExtension<F>> GKROracle<F, MLE> {
+impl<F: PrimeField> GKROracle<F> {
     pub(crate) fn new(
-        sum_of_products: SumOfProducts<F, MLE>,
+        sum_of_products: GKRVerifierSumOfProducts<F>,
         g1: Vec<F>,
         g2: Vec<F>,
         alpha: F,
         beta: F,
-        w_u_i: F,
-        w_v_i: F,
     ) -> Self {
         Self {
             sum_of_products,
@@ -134,13 +130,11 @@ impl<F: PrimeField, MLE: MultilinearExtension<F>> GKROracle<F, MLE> {
             g2,
             alpha,
             beta,
-            w_u_i,
-            w_v_i,
         }
     }
 }
 
-impl<F: PrimeField, MLE: MultilinearExtension<F>> Oracle<F> for GKROracle<F, MLE> {
+impl<F: PrimeField> Oracle<F> for GKROracle<F> {
     fn divinate(&self, x: &[F], y: &[F]) -> F {
         let mut sums = Vec::new();
 
@@ -152,8 +146,10 @@ impl<F: PrimeField, MLE: MultilinearExtension<F>> Oracle<F> for GKROracle<F, MLE
             let mut sum = F::zero();
 
             // almost the same as in `CombinedPolyOracle`, but instead of using f2, f3, we use the provided values w_u_i, w_v_i.
-            for Product(f1, _, _) in &self.sum_of_products.terms {
-                sum += f1.evaluate(&zxy).unwrap() * self.w_u_i * self.w_v_i
+            for GKRVerifierProduct(f1, w_u_i, w_v_i) in &self.sum_of_products.terms {
+                // println!("f1: {:?}", f1);
+                // println!("zxy: {:?}", zxy);
+                sum += f1.evaluate(&zxy).unwrap() * w_u_i * w_v_i
             }
 
             sums.push(coeff * sum);
@@ -164,7 +160,7 @@ impl<F: PrimeField, MLE: MultilinearExtension<F>> Oracle<F> for GKROracle<F, MLE
 
     // returns the number of variables of the SparseMLE, minus the number of bits needed to represent "current" layer.
     fn num_rounds(&self) -> usize {
-        let Product(f1, _, _) = &self.sum_of_products.terms[0];
+        let GKRVerifierProduct(f1, _, _) = &self.sum_of_products.terms[0];
         f1.num_vars() - self.g1.len()
     }
 

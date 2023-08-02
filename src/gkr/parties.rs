@@ -5,8 +5,12 @@ use ark_poly::{
     SparseMultilinearExtension,
 };
 
-use super::{parties::Transcript as SC_Transcript, UniformCircuit};
-use crate::parties::Prover as SumcheckProver;
+use super::UniformCircuit;
+use crate::utils::Transcript as SC_Transcript;
+use crate::{
+    oracles::GKROracle,
+    parties::{Prover as SumcheckProver, Verifier as SumcheckVerifier},
+};
 
 #[derive(Clone, Debug)]
 pub struct Transcript<F: PrimeField + Absorb> {
@@ -75,8 +79,12 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
 
         // compute all the layers
         let w = self.circuit.evaluate(x);
-        // TODO provably need to go in reverse index order for w, since the input layer is at index 0
-        let r_0 = self.transcript.update(w[0].clone(), &mut self.sponge, s);
+        // go over the circuit layers in reverse index order for w, since the input layer is at index 0
+        let r_0 = self
+            .transcript
+            .update(w[d - 1].clone(), &mut self.sponge, s);
+
+        println!("r_0: {:?}", r_0);
 
         let mut alpha = F::one();
         let mut beta = F::zero();
@@ -85,8 +93,8 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
         let mut v_i = r_0;
 
         for i in 0..d {
-            println!("layer {} of {}", i, d);
-            let w_iplus1_mle = DenseMultilinearExtension::from_evaluations_vec(s, w[i].clone());
+            let w_iplus1_mle =
+                DenseMultilinearExtension::from_evaluations_vec(s, w[d - i - 1].clone());
 
             let [add_i_mle, mul_i_mle]: [SparseMultilinearExtension<F>; 2] =
                 (&self.circuit.layers[i]).into();
@@ -105,6 +113,7 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
                 self.sponge.clone(),
             );
             let sumcheck_transcript = sumcheck_prover.run(&u_i, &v_i, alpha, beta);
+
             // the first half of the transcript is b*, the second is c*
             let (b_star, c_star) = sumcheck_transcript.challenges.split_at((1 << s) / 2);
 
@@ -121,6 +130,11 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
 
             alpha = temp_scalars[0];
             beta = temp_scalars[1];
+
+            // add the sumcheck transcript to the GKR transcript
+            self.transcript
+                .sumcheck_transcripts
+                .push(sumcheck_transcript);
         }
         self.transcript.clone()
     }
@@ -147,6 +161,45 @@ impl<F: PrimeField + Absorb, const s: usize> Verifier<F, s> {
     }
 
     pub fn run(&mut self) -> bool {
+        let d = self.circuit.layers.len();
+
+        let claim = &self.transcript.challenges[..s];
+
+        // verify the transcript
+        let mut u_i = claim;
+        let mut v_i = claim;
+
+        let mut alpha = F::one();
+        let mut beta = F::zero();
+
+        for i in 0..d {
+            let [add_i_mle, mul_i_mle]: [SparseMultilinearExtension<F>; 2] =
+                (&self.circuit.layers[i]).into();
+
+            let w_u_i = self.transcript.values[i + 1][0];
+            let w_v_i = self.transcript.values[i + 1][1];
+
+            // the 2nd & 3rd element can be whatever, since we're only using the first in computation
+            let f_i_1 = (add_i_mle.clone(), w_u_i, F::one());
+            let f_i_2 = (add_i_mle, F::one(), w_v_i);
+            let f_i_3 = (mul_i_mle, w_u_i, w_v_i);
+            let sum_of_prods = vec![f_i_1.into(), f_i_2.into(), f_i_3.into()].into();
+
+            let mut sumcheck_verifier = SumcheckVerifier::new(
+                GKROracle::new(sum_of_prods, u_i.to_vec(), v_i.to_vec(), alpha, beta),
+                self.sponge.clone(),
+                self.transcript.sumcheck_transcripts[i].clone(),
+            );
+
+            assert!(sumcheck_verifier.run(), "sumcheck failed at round {}", i);
+
+            (u_i, v_i) = self.transcript.sumcheck_transcripts[i]
+                .challenges
+                .split_at((1 << s) / 2);
+
+            alpha = self.transcript.challenges[s + i];
+            beta = self.transcript.challenges[s + i + 1];
+        }
         true
     }
 }
