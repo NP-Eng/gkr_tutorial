@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn tests_sumcheck() {
+    fn tests_sumcheck_basic() {
         // f(x1, x2, x3, x4, x5, x6) = f(g1, g2, x1, x2, y1, y2)
         // f1 = (1-x1)(1-x2)(1-x3)(1-x5)[(1-x6)*x4 + 2(1-x4)*x6]
         let points = vec![(8, Fq::from(1_u64)), (32, Fq::from(2_u64))];

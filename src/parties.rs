@@ -7,7 +7,7 @@ use ark_poly::{MultilinearExtension, SparseMultilinearExtension};
 use crate::{
     data_structures::{GKRVerifierProduct, GKRVerifierSumOfProducts, Product, SumOfProducts},
     oracles::{CombinedPolyOracle, GKROracle, Oracle, PolyOracle},
-    utils::{interpolate_uni_poly, test_sponge, usize_to_zxy, Transcript},
+    utils::{interpolate_uni_poly, test_sponge, usize_to_zxy, SumcheckProof, Transcript},
 };
 
 pub struct Prover<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> {
@@ -40,7 +40,12 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
     }
 
     #[allow(non_snake_case)]
-    fn sumcheck_prod(&mut self, A_fs: &mut Vec<Vec<F>>, A_gs: &mut Vec<Vec<F>>, v: usize) -> F {
+    fn sumcheck_prod(
+        &mut self,
+        A_fs: &mut Vec<Vec<F>>,
+        A_gs: &mut Vec<Vec<F>>,
+        v: usize,
+    ) -> (F, Vec<F>) {
         // first round; claimed_value contains the value the Prover wants to prove
         let num_summands = A_fs.len();
         assert_eq!(num_summands, A_gs.len());
@@ -54,6 +59,7 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
             .sum();
 
         let le_indices = to_le_indices(v);
+        let mut random_challenges = Vec::new();
 
         for i in 1..=v {
             let mut values = vec![F::zero(); 3];
@@ -88,6 +94,7 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
             }
 
             let r_i = self.transcript.update(&values, &mut self.sponge);
+            random_challenges.push(r_i);
 
             // Algorithm 1, part 2
             for summand in 0..num_summands {
@@ -103,12 +110,12 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
             }
         }
 
-        claimed_value
+        (claimed_value, random_challenges)
     }
 
     // Algorithm 6 (Sumcheck GKR) adapted to a sum of products
     #[allow(non_snake_case)]
-    pub fn run(&mut self, g1: &[F], g2: &[F], alpha: F, beta: F) -> Transcript<F> {
+    pub fn run(&mut self, g1: &[F], g2: &[F], alpha: F, beta: F) -> SumcheckProof<F> {
         let Product(_, pol, _) = &self.sum_of_products.terms[0];
         let k: usize = pol.num_vars();
 
@@ -122,58 +129,63 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
             A_f2s.push(f2.to_evaluations());
         }
 
-        let out = self.sumcheck_prod(&mut A_hs, &mut A_f2s, k);
+        let (out, u) = self.sumcheck_prod(&mut A_hs, &mut A_f2s, k);
 
         // the final claim comes from the first run, since the second is summing over a "different" `f1` (with `x` fixed to some random `u`)
         self.transcript.set_claim(out);
 
         // phase 2
-        let u = &self.transcript.challenges[..];
 
         let _A_f3s: Vec<Vec<F>> = Vec::new();
         let mut A_f1s: Vec<Vec<F>> = Vec::new();
         // let f2s_u: Vec<F> = Vec::new();
         let mut A_f3_f2_us: Vec<Vec<F>> = Vec::new();
         for Product(f1, f2, f3) in &self.sum_of_products.terms {
-            let f2_u = f2.evaluate(u).unwrap();
+            let f2_u = f2.evaluate(&u).unwrap();
             let A_f3 = f3.to_evaluations();
 
-            A_f1s.push(initialise_phase_2::<F>(f1, g1, g2, u, alpha, beta));
+            A_f1s.push(initialise_phase_2::<F>(f1, g1, g2, &u, alpha, beta));
             A_f3_f2_us.push(A_f3.iter().map(|x| *x * f2_u).collect::<Vec<F>>());
         }
 
-        self.sumcheck_prod(&mut A_f1s, &mut A_f3_f2_us, k);
+        let (_, v) = self.sumcheck_prod(&mut A_f1s, &mut A_f3_f2_us, k);
+        self.transcript.proof.random_challenges = [u, v].concat();
 
         println!("Prover finished successfully");
 
-        self.transcript.clone()
+        self.transcript.proof.clone()
     }
 }
 
 impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
-    pub fn new(oracle: O, sponge: PoseidonSponge<F>, transcript: Transcript<F>) -> Self {
+    pub fn new(oracle: O, sponge: PoseidonSponge<F>, proof: SumcheckProof<F>) -> Self {
         Self {
             oracle,
             sponge,
-            transcript,
+            transcript: Transcript { proof },
         }
     }
 
-    pub fn run(&mut self) -> bool {
-        self.transcript.verify(&mut self.sponge);
-
+    pub fn run(&mut self) -> (bool, Vec<F>) {
         let v = self.oracle.num_rounds();
 
         // last_pol is initialised to a singleton list containing the claimed value
         // in subsequent rounds, it contains the values of the would-be-sent polynomial at 0, 1 and 2
-        let mut last_pol = vec![self.transcript.claim.unwrap()];
+        let mut last_pol = vec![self.transcript.proof.claim.unwrap()];
 
         // dummy scalar to be used when evaluating the constant poly in the first iteration
         let mut last_sent_scalar = F::one();
 
+        let mut random_challenges = Vec::new();
+
         // round numbering in line with Thaler's book (necessarily inconsistent variable indexing!)
         for r in 0..v {
-            let new_pol_evals = self.transcript.values[r].clone();
+            let new_pol_evals = self.transcript.proof.values[r].clone();
+            println!(
+                "Verifier received evaluations of f_{}: {:?}",
+                r, new_pol_evals
+            );
+
             let claimed_sum = new_pol_evals[0] + new_pol_evals[1];
             let new_pol = Vec::from(&new_pol_evals[..]);
 
@@ -181,40 +193,38 @@ impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
                 println!("Verifier found inconsistent evaluation in round {r}: received univariate polynomial is f_n = {new_pol:?},\n  \
                           previous one is f_o = {last_pol:?}. The equation f_n(0) + f_n(1) = f_o({last_sent_scalar}) fails to hold. Aborting."
                         );
-                return false;
+                return (false, random_challenges);
             }
-            last_sent_scalar = self.transcript.challenges[r];
+            last_sent_scalar = self.transcript.update(&new_pol_evals, &mut self.sponge);
+            random_challenges.push(last_sent_scalar);
 
             last_pol = new_pol;
         }
 
         if interpolate_uni_poly(&last_pol, last_sent_scalar)
-            != self.oracle.divinate(
-                &self.transcript.challenges[..(v / 2)],
-                &self.transcript.challenges[(v / 2)..],
-            )
+            != self
+                .oracle
+                .divinate(&random_challenges[..(v / 2)], &random_challenges[(v / 2)..])
         {
             println!(
                 "Verifier found inconsistent evaluation in the oracle call: \
                         received univariate polynomial {last_pol:?} evaluates to {},\n  \
                         whereas original multivariate one evaluates to {} on {:?}. Aborting.",
                 interpolate_uni_poly(&last_pol, last_sent_scalar),
-                self.oracle.divinate(
-                    &self.transcript.challenges[..(v / 2)],
-                    &self.transcript.challenges[(v / 2)..],
-                ),
-                self.transcript.challenges[1..].to_vec(),
+                self.oracle
+                    .divinate(&random_challenges[..(v / 2)], &random_challenges[(v / 2)..],),
+                random_challenges,
             );
-            return false;
+            return (false, random_challenges);
         }
 
         println!(
             "Verifier finished successfully and is confident in the value {:?} {}",
-            self.transcript.claim,
+            self.transcript.proof.claim,
             self.oracle.trust_message()
         );
 
-        true
+        (true, random_challenges)
     }
 }
 
@@ -334,17 +344,21 @@ pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F
         terms: vec![Product(f1, f2, f3)],
     };
 
-    let mut prover = Prover::new(simple_sum.clone(), test_sponge());
+    // Need to use the same sponge, since it's initialized with random values
+    let sponge = test_sponge();
 
-    let transcript = prover.run(g, g, F::one(), F::zero());
+    let mut prover = Prover::new(simple_sum.clone(), sponge.clone());
 
-    let mut verifier = Verifier {
-        oracle: PolyOracle::<F, MLE>::new(simple_sum, g.to_vec()), // TODO: decide if passing & is enough
-        sponge: test_sponge(),
-        transcript,
-    };
+    let proof = prover.run(g, g, F::one(), F::zero());
 
-    assert!(verifier.run());
+    let mut verifier = Verifier::new(
+        PolyOracle::<F, MLE>::new(simple_sum, g.to_vec()), // TODO: decide if passing & is enough
+        sponge.clone(),
+        proof,
+    );
+
+    let (result, _) = verifier.run();
+    assert!(result)
 }
 
 // run the protocol and return true iff the verifier does not abort
@@ -361,12 +375,17 @@ pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearEx
         terms: vec![Product(f1.clone(), f2.clone(), f3.clone())],
     };
 
-    let mut prover = Prover::new(simple_sum.clone(), test_sponge());
+    // Need to use the same sponge, since it's initialized with random values
+    let sponge = test_sponge();
 
-    let transcript = prover.run(g1, g2, alpha, beta);
+    let mut prover = Prover::new(simple_sum.clone(), sponge.clone());
 
-    let b_star = &transcript.challenges[..(transcript.challenges.len() / 2)];
-    let c_star = &transcript.challenges[(transcript.challenges.len() / 2)..];
+    let proof = prover.run(g1, g2, alpha, beta);
+
+    let num_challenges = proof.random_challenges.len();
+
+    let (b_star, c_star) = proof.random_challenges.split_at(num_challenges / 2);
+    // let c_star = &transcript.challenges[(transcript.challenges.len() / 2)..];
 
     let w_u_i = &f2.evaluate(b_star).unwrap();
     let w_v_i = &f3.evaluate(c_star).unwrap();
@@ -378,13 +397,9 @@ pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearEx
 
     let gkr_oracle = GKROracle::new(gkr_sum, g1.to_vec(), g2.to_vec(), alpha, beta);
 
-    let mut verifier = Verifier {
-        oracle: gkr_oracle,
-        sponge: test_sponge(),
-        transcript,
-    };
+    let mut verifier = Verifier::new(gkr_oracle, sponge.clone(), proof);
 
-    assert!(verifier.run());
+    assert!(verifier.run().0);
 }
 
 // run the protocol and return true iff the verifier does not abort
@@ -398,21 +413,17 @@ pub fn run_sumcheck_protocol_combined_multiprod<
     alpha: F,
     beta: F,
 ) {
-    let mut prover = Prover::new(sum_of_products.clone(), test_sponge());
+    // Need to use the same sponge, since it's initialized with random values
+    let sponge = test_sponge();
+    let mut prover = Prover::new(sum_of_products.clone(), sponge.clone());
 
-    let transcript = prover.run(g1, g2, alpha, beta);
+    let proof = prover.run(g1, g2, alpha, beta);
 
-    let mut verifier = Verifier {
-        oracle: CombinedPolyOracle::<F, MLE>::new(
-            sum_of_products,
-            g1.to_vec(),
-            g2.to_vec(),
-            alpha,
-            beta,
-        ),
-        sponge: test_sponge(),
-        transcript,
-    };
+    let mut verifier = Verifier::new(
+        CombinedPolyOracle::<F, MLE>::new(sum_of_products, g1.to_vec(), g2.to_vec(), alpha, beta),
+        sponge.clone(),
+        proof,
+    );
 
-    assert!(verifier.run());
+    assert!(verifier.run().0);
 }

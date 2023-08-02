@@ -6,51 +6,37 @@ use ark_poly::{
 };
 
 use super::UniformCircuit;
-use crate::utils::Transcript as SC_Transcript;
+use crate::utils::SumcheckProof;
 use crate::{
     oracles::GKROracle,
     parties::{Prover as SumcheckProver, Verifier as SumcheckVerifier},
 };
 
+#[derive(Clone, Debug, Default)]
+pub struct GKRProof<F: PrimeField> {
+    pub values: Vec<Vec<F>>,
+    pub sumcheck_proofs: Vec<SumcheckProof<F>>,
+}
+
 #[derive(Clone, Debug)]
 pub struct Transcript<F: PrimeField + Absorb> {
-    pub values: Vec<Vec<F>>,
-    pub challenges: Vec<F>,
-    pub sumcheck_transcripts: Vec<SC_Transcript<F>>,
+    pub proof: GKRProof<F>,
 }
 
 impl<F: PrimeField + Absorb> Transcript<F> {
     fn new() -> Self {
         Self {
-            values: Vec::new(),
-            challenges: Vec::new(),
-            sumcheck_transcripts: Vec::new(),
+            proof: GKRProof::default(),
         }
     }
-    fn update(&mut self, elems: Vec<F>, sponge: &mut PoseidonSponge<F>, n: usize) -> Vec<F> {
+    fn update(&mut self, elems: &[F], sponge: &mut PoseidonSponge<F>, n: usize) -> Vec<F> {
         for elem in elems.iter() {
             sponge.absorb(elem);
         }
-        self.values.push(elems);
+        self.proof.values.push(elems.to_vec());
 
-        // challenges simlated via the FS transform
         let rs = sponge.squeeze_field_elements::<F>(n);
-        self.challenges.extend(rs.clone());
         rs
-    }
-    fn verify(&self, sponge: &mut PoseidonSponge<F>) -> bool {
-        // not useful
-        for (msg, h) in self.values.iter().zip(self.challenges.iter()) {
-            for elem in msg.iter() {
-                sponge.absorb(elem);
-            }
-
-            if sponge.squeeze_field_elements::<F>(1)[0] != *h {
-                return false;
-            }
-        }
-
-        true
     }
 }
 pub struct Prover<F: PrimeField + Absorb, const s: usize> {
@@ -80,11 +66,7 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
         // compute all the layers
         let w = self.circuit.evaluate(x);
         // go over the circuit layers in reverse index order for w, since the input layer is at index 0
-        let r_0 = self
-            .transcript
-            .update(w[d - 1].clone(), &mut self.sponge, s);
-
-        println!("r_0: {:?}", r_0);
+        let r_0 = self.transcript.update(&w[d - 1], &mut self.sponge, s);
 
         let mut alpha = F::one();
         let mut beta = F::zero();
@@ -112,10 +94,10 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
                 vec![f_i_1.into(), f_i_2.into(), f_i_3.into()].into(),
                 self.sponge.clone(),
             );
-            let sumcheck_transcript = sumcheck_prover.run(&u_i, &v_i, alpha, beta);
+            let sumcheck_proof = sumcheck_prover.run(&u_i, &v_i, alpha, beta);
 
             // the first half of the transcript is b*, the second is c*
-            let (b_star, c_star) = sumcheck_transcript.challenges.split_at((1 << s) / 2);
+            let (b_star, c_star) = sumcheck_proof.random_challenges.split_at((1 << s) / 2);
 
             let w_b_star = w_iplus1_mle.evaluate(b_star).unwrap();
             let w_c_star = w_iplus1_mle.evaluate(c_star).unwrap();
@@ -124,19 +106,19 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
             v_i = c_star.to_vec();
 
             // get the random scalars from the verifier to compute the linear combination
-            let temp_scalars =
-                self.transcript
-                    .update([w_b_star, w_c_star].to_vec(), &mut self.sponge, 2);
+            let temp_scalars = self
+                .transcript
+                .update(&[w_b_star, w_c_star], &mut self.sponge, 2);
 
             alpha = temp_scalars[0];
             beta = temp_scalars[1];
 
             // add the sumcheck transcript to the GKR transcript
-            self.transcript
-                .sumcheck_transcripts
-                .push(sumcheck_transcript);
+            self.transcript.proof.sumcheck_proofs.push(sumcheck_proof);
         }
-        self.transcript.clone()
+        Transcript {
+            proof: self.transcript.proof.clone(),
+        }
     }
 }
 
@@ -151,23 +133,25 @@ impl<F: PrimeField + Absorb, const s: usize> Verifier<F, s> {
     pub fn new(
         circuit: UniformCircuit<F, s>,
         sponge: PoseidonSponge<F>,
-        transcript: Transcript<F>,
+        proof: GKRProof<F>,
     ) -> Self {
         Self {
             circuit,
             sponge,
-            transcript,
+            transcript: Transcript { proof },
         }
     }
 
     pub fn run(&mut self) -> bool {
         let d = self.circuit.layers.len();
 
-        let claim = &self.transcript.challenges[..s];
+        let claim = self.transcript.proof.values[0].clone();
+
+        let r_0 = self.transcript.update(&claim, &mut self.sponge, s);
 
         // verify the transcript
-        let mut u_i = claim;
-        let mut v_i = claim;
+        let mut u_i = r_0.clone();
+        let mut v_i = r_0.clone();
 
         let mut alpha = F::one();
         let mut beta = F::zero();
@@ -176,8 +160,8 @@ impl<F: PrimeField + Absorb, const s: usize> Verifier<F, s> {
             let [add_i_mle, mul_i_mle]: [SparseMultilinearExtension<F>; 2] =
                 (&self.circuit.layers[i]).into();
 
-            let w_u_i = self.transcript.values[i + 1][0];
-            let w_v_i = self.transcript.values[i + 1][1];
+            let w_u_i = self.transcript.proof.values[i + 1][0];
+            let w_v_i = self.transcript.proof.values[i + 1][1];
 
             // the 2nd & 3rd element can be whatever, since we're only using the first in computation
             let f_i_1 = (add_i_mle.clone(), w_u_i, F::one());
@@ -186,19 +170,22 @@ impl<F: PrimeField + Absorb, const s: usize> Verifier<F, s> {
             let sum_of_prods = vec![f_i_1.into(), f_i_2.into(), f_i_3.into()].into();
 
             let mut sumcheck_verifier = SumcheckVerifier::new(
-                GKROracle::new(sum_of_prods, u_i.to_vec(), v_i.to_vec(), alpha, beta),
+                GKROracle::new(sum_of_prods, u_i, v_i, alpha, beta),
                 self.sponge.clone(),
-                self.transcript.sumcheck_transcripts[i].clone(),
+                self.transcript.proof.sumcheck_proofs[i].clone(),
             );
 
-            assert!(sumcheck_verifier.run(), "sumcheck failed at round {}", i);
+            let (result, random_challenges) = sumcheck_verifier.run();
+            assert!(result, "sumcheck failed at round {}", i);
 
-            (u_i, v_i) = self.transcript.sumcheck_transcripts[i]
-                .challenges
-                .split_at((1 << s) / 2);
+            let (tv1, tv2) = random_challenges.split_at((1 << s) / 2);
+            u_i = tv1.to_vec();
+            v_i = tv2.to_vec();
 
-            alpha = self.transcript.challenges[s + i];
-            beta = self.transcript.challenges[s + i + 1];
+            let temp_scalars = self.transcript.update(&[w_u_i, w_v_i], &mut self.sponge, 2);
+
+            alpha = temp_scalars[0];
+            beta = temp_scalars[1];
         }
         true
     }

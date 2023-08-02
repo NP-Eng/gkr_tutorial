@@ -27,19 +27,22 @@ pub(crate) fn test_sponge<F: PrimeField>() -> PoseidonSponge<F> {
     PoseidonSponge::new(&config)
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct SumcheckProof<F: PrimeField> {
+    pub values: Vec<Vec<F>>,
+    pub random_challenges: Vec<F>,
+    pub claim: Option<F>,
+}
+
 #[derive(Clone, Debug)]
 pub struct Transcript<F: PrimeField + Absorb> {
-    pub values: Vec<Vec<F>>,
-    pub challenges: Vec<F>,
-    pub claim: Option<F>,
+    pub proof: SumcheckProof<F>,
 }
 
 impl<F: PrimeField + Absorb> Transcript<F> {
     pub fn new() -> Self {
         Self {
-            values: Vec::new(),
-            challenges: Vec::new(),
-            claim: None,
+            proof: SumcheckProof::default(),
         }
     }
 
@@ -47,29 +50,14 @@ impl<F: PrimeField + Absorb> Transcript<F> {
         for elem in elements.iter() {
             sponge.absorb(elem);
         }
-        self.values.push(elements.to_vec());
+        self.proof.values.push(elements.to_vec());
 
         let r = sponge.squeeze_field_elements::<F>(1)[0];
-        self.challenges.push(r);
         r
     }
 
-    pub fn verify(&self, sponge: &mut PoseidonSponge<F>) -> bool {
-        for (msg, h) in self.values.iter().zip(self.challenges.iter()) {
-            for elem in msg.iter() {
-                sponge.absorb(elem);
-            }
-
-            if sponge.squeeze_field_elements::<F>(1)[0] != *h {
-                return false;
-            }
-        }
-
-        true
-    }
-
     pub fn set_claim(&mut self, claimed_value: F) {
-        self.claim = Some(claimed_value);
+        self.proof.claim = Some(claimed_value);
     }
 }
 
