@@ -3,8 +3,7 @@ mod tests {
     use crate::{
         data_structures::{Product, SumOfProducts},
         parties::{
-            initialise_phase_1 as init_phase_1_original,
-            initialise_phase_2 as init_phase_2_original, run_sumcheck_protocol,
+            initialise_phase_1 as init_phase_1_original, run_sumcheck_protocol,
             run_sumcheck_protocol_combined, run_sumcheck_protocol_combined_multiprod,
         },
         utils::usize_to_zxy,
@@ -22,14 +21,6 @@ mod tests {
         g: &[F],
     ) -> Vec<F> {
         init_phase_1_original(f_1, f_3, g, g, F::one(), F::zero())
-    }
-
-    fn initialise_phase_2<F: PrimeField>(
-        f_1: &SparseMultilinearExtension<F>,
-        g: &[F],
-        u: &[F],
-    ) -> Vec<F> {
-        init_phase_2_original(f_1, g, g, u, F::one(), F::zero())
     }
 
     #[test]

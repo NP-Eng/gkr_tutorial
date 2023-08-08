@@ -1,12 +1,9 @@
 #[cfg(test)]
 mod test {
 
-    use crate::{
-        gkr::{
-            parties::{Prover, Verifier},
-            *,
-        },
-        utils::test_sponge,
+    use crate::gkr::{
+        parties::{Prover, Verifier},
+        *,
     };
     use ark_bn254::Fr;
 

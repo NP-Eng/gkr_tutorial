@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, vec};
 
-use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, Absorb, CryptographicSponge};
+use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::{BigInteger, PrimeField};
 use ark_poly::{
     evaluations::multivariate::{DenseMultilinearExtension, MultilinearExtension},
@@ -47,7 +47,7 @@ impl<F: PrimeField + Absorb, F2: ScalarField> Transcript<F, F2> {
         self.proof.values.push(elems.to_vec());
 
         let mut squeezed = vec![];
-        for i in 0..n {
+        for _ in 0..n {
             let halo2_out = self.sponge.squeeze();
             let out = F::from_le_bytes_mod_order(&halo2_out.to_bytes_le());
             squeezed.push(out);

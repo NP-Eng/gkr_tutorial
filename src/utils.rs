@@ -1,7 +1,4 @@
-use ark_crypto_primitives::sponge::{
-    poseidon::{PoseidonConfig, PoseidonSponge},
-    Absorb, CryptographicSponge,
-};
+use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::{BigInteger, PrimeField};
 use halo2_base::utils::ScalarField;
 use poseidon_native::Poseidon;
