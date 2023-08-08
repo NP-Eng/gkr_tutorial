@@ -1,25 +1,23 @@
-use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
 
 use ark_poly::{MultilinearExtension, SparseMultilinearExtension};
+use halo2_base::utils::ScalarField;
 
 use crate::{
     data_structures::{GKRVerifierProduct, GKRVerifierSumOfProducts, Product, SumOfProducts},
     oracles::{CombinedPolyOracle, GKROracle, Oracle, PolyOracle},
-    utils::{interpolate_uni_poly, test_sponge, usize_to_zxy, SumcheckProof, Transcript},
+    utils::{interpolate_uni_poly, usize_to_zxy, SumcheckProof, Transcript},
 };
 
-pub struct Prover<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> {
+pub struct Prover<F: PrimeField + Absorb, F2: ScalarField, MLE: MultilinearExtension<F>> {
     sum_of_products: SumOfProducts<F, MLE>,
-    sponge: PoseidonSponge<F>,
-    transcript: Transcript<F>,
+    transcript: Transcript<F, F2>,
 }
 
-pub struct Verifier<F: PrimeField + Absorb, O: Oracle<F>> {
+pub struct Verifier<F: PrimeField + Absorb, F2: ScalarField, O: Oracle<F>> {
     oracle: O,
-    sponge: PoseidonSponge<F>,
-    transcript: Transcript<F>,
+    transcript: Transcript<F, F2>,
 }
 
 pub(crate) fn to_le_indices(v: usize) -> Vec<usize> {
@@ -30,11 +28,10 @@ pub(crate) fn to_le_indices(v: usize) -> Vec<usize> {
         .collect()
 }
 
-impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
-    pub fn new(sum_of_products: SumOfProducts<F, MLE>, sponge: PoseidonSponge<F>) -> Self {
+impl<F: PrimeField + Absorb, F2: ScalarField, MLE: MultilinearExtension<F>> Prover<F, F2, MLE> {
+    pub fn new(sum_of_products: SumOfProducts<F, MLE>) -> Self {
         Self {
             sum_of_products,
-            sponge,
             transcript: Transcript::new(),
         }
     }
@@ -93,7 +90,7 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
                 values[2] += temp_values[2];
             }
 
-            let r_i = self.transcript.update(&values, &mut self.sponge);
+            let r_i = self.transcript.update(&values);
             random_challenges.push(r_i);
 
             // Algorithm 1, part 2
@@ -156,12 +153,11 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
     }
 }
 
-impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
-    pub fn new(oracle: O, sponge: PoseidonSponge<F>, proof: SumcheckProof<F>) -> Self {
+impl<F: PrimeField + Absorb, F2: ScalarField, O: Oracle<F>> Verifier<F, F2, O> {
+    pub fn new(oracle: O, proof: SumcheckProof<F>) -> Self {
         Self {
             oracle,
-            sponge,
-            transcript: Transcript { proof },
+            transcript: Transcript::new_from_proof(proof),
         }
     }
 
@@ -194,7 +190,7 @@ impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
                         );
                 return (false, random_challenges);
             }
-            last_sent_scalar = self.transcript.update(&new_pol_evals, &mut self.sponge);
+            last_sent_scalar = self.transcript.update(&new_pol_evals);
             random_challenges.push(last_sent_scalar);
 
             last_pol = new_pol;
@@ -333,7 +329,11 @@ pub(crate) fn initialise_phase_2<F: PrimeField>(
 }
 
 // run the protocol and return true iff the verifier does not abort
-pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F>>(
+pub fn run_sumcheck_protocol<
+    F: PrimeField + Absorb,
+    F2: ScalarField,
+    MLE: MultilinearExtension<F>,
+>(
     f1: SparseMultilinearExtension<F>,
     f2: MLE,
     f3: MLE,
@@ -343,16 +343,12 @@ pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F
         terms: vec![Product(f1, f2, f3)],
     };
 
-    // Need to use the same sponge, since it's initialized with random values
-    let sponge = test_sponge();
-
-    let mut prover = Prover::new(simple_sum.clone(), sponge.clone());
+    let mut prover: Prover<F, F2, MLE> = Prover::new(simple_sum.clone());
 
     let (proof, _) = prover.run(g, g, F::one(), F::zero());
 
-    let mut verifier = Verifier::new(
+    let mut verifier: Verifier<F, F2, PolyOracle<F, MLE>> = Verifier::new(
         PolyOracle::<F, MLE>::new(simple_sum, g.to_vec()), // TODO: decide if passing & is enough
-        sponge,
         proof,
     );
 
@@ -361,7 +357,11 @@ pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F
 }
 
 // run the protocol and return true iff the verifier does not abort
-pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearExtension<F>>(
+pub fn run_sumcheck_protocol_combined<
+    F: PrimeField + Absorb,
+    F2: ScalarField,
+    MLE: MultilinearExtension<F>,
+>(
     f1: SparseMultilinearExtension<F>,
     f2: MLE,
     f3: MLE,
@@ -374,10 +374,7 @@ pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearEx
         terms: vec![Product(f1.clone(), f2.clone(), f3.clone())],
     };
 
-    // Need to use the same sponge, since it's initialized with random values
-    let sponge = test_sponge();
-
-    let mut prover = Prover::new(simple_sum, sponge.clone());
+    let mut prover: Prover<F, F2, MLE> = Prover::new(simple_sum);
 
     let (proof, random_challenges) = prover.run(g1, g2, alpha, beta);
 
@@ -395,7 +392,7 @@ pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearEx
 
     let gkr_oracle = GKROracle::new(gkr_sum, g1.to_vec(), g2.to_vec(), alpha, beta);
 
-    let mut verifier = Verifier::new(gkr_oracle, sponge, proof);
+    let mut verifier: Verifier<F, F2, GKROracle<F>> = Verifier::new(gkr_oracle, proof);
 
     assert!(verifier.run().0);
 }
@@ -403,6 +400,7 @@ pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearEx
 // run the protocol and return true iff the verifier does not abort
 pub fn run_sumcheck_protocol_combined_multiprod<
     F: PrimeField + Absorb,
+    F2: ScalarField,
     MLE: MultilinearExtension<F>,
 >(
     sum_of_products: SumOfProducts<F, MLE>,
@@ -412,14 +410,12 @@ pub fn run_sumcheck_protocol_combined_multiprod<
     beta: F,
 ) {
     // Need to use the same sponge, since it's initialized with random values
-    let sponge = test_sponge();
-    let mut prover = Prover::new(sum_of_products.clone(), sponge.clone());
+    let mut prover: Prover<F, F2, MLE> = Prover::new(sum_of_products.clone());
 
     let (proof, _) = prover.run(g1, g2, alpha, beta);
 
-    let mut verifier = Verifier::new(
+    let mut verifier: Verifier<F, F2, CombinedPolyOracle<F, MLE>> = Verifier::new(
         CombinedPolyOracle::<F, MLE>::new(sum_of_products, g1.to_vec(), g2.to_vec(), alpha, beta),
-        sponge,
         proof,
     );
 

@@ -8,11 +8,12 @@ mod tests {
             run_sumcheck_protocol_combined, run_sumcheck_protocol_combined_multiprod,
         },
         utils::usize_to_zxy,
-        Fq,
+        Fr as Fq,
     };
     use ark_ff::PrimeField;
     use ark_poly::{DenseMultilinearExtension, MultilinearExtension, SparseMultilinearExtension};
     use ark_std::UniformRand;
+    use halo2_base::halo2_proofs::halo2curves::bn256::Fr as Fr2;
 
     fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
         f_1: &SparseMultilinearExtension<F>,

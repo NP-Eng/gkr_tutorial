@@ -2,29 +2,12 @@ use ark_crypto_primitives::sponge::{
     poseidon::{PoseidonConfig, PoseidonSponge},
     Absorb, CryptographicSponge,
 };
-use ark_ff::PrimeField;
-use ark_std::test_rng;
+use ark_ff::{BigInteger, PrimeField};
+use halo2_base::utils::ScalarField;
+use poseidon_native::Poseidon;
 
-pub(crate) fn test_sponge<F: PrimeField>() -> PoseidonSponge<F> {
-    let full_rounds = 8;
-    let partial_rounds = 31;
-    let alpha = 17;
-    let mds = vec![
-        vec![F::one(), F::zero(), F::one()],
-        vec![F::one(), F::one(), F::zero()],
-        vec![F::zero(), F::one(), F::one()],
-    ];
-    let mut v = Vec::new();
-    let mut ark_rng = test_rng();
-    for _ in 0..(full_rounds + partial_rounds) {
-        let mut res = Vec::new();
-        for _ in 0..3 {
-            res.push(F::rand(&mut ark_rng));
-        }
-        v.push(res);
-    }
-    let config = PoseidonConfig::new(full_rounds, partial_rounds, alpha, mds, v, 2, 1);
-    PoseidonSponge::new(&config)
+pub(crate) fn test_sponge<F: ScalarField>() -> Poseidon<F, 3, 2> {
+    Poseidon::<F, 3, 2>::new(8, 57)
 }
 
 /// `SumcheckProof` can be safely shared with the verifier in full.
@@ -37,25 +20,38 @@ pub struct SumcheckProof<F: PrimeField> {
 /// Each party will instantiate a `Transcript`.
 /// The prover will feed into the transcript the values of the polynomial, thus creating the `SumcheckProof`.
 /// The verifier will feed into the transcript the values received in `SumcheckProof`.
-#[derive(Clone, Debug)]
-pub struct Transcript<F: PrimeField + Absorb> {
+#[derive(Clone)]
+pub struct Transcript<F: PrimeField + Absorb, F2: ScalarField> {
     pub proof: SumcheckProof<F>,
+    pub sponge: Poseidon<F2, 3, 2>,
 }
 
-impl<F: PrimeField + Absorb> Transcript<F> {
+impl<F: PrimeField + Absorb, F2: ScalarField> Transcript<F, F2> {
     pub fn new() -> Self {
         Self {
             proof: SumcheckProof::default(),
+            sponge: test_sponge(),
         }
     }
 
-    pub fn update(&mut self, elements: &[F], sponge: &mut PoseidonSponge<F>) -> F {
+    pub fn new_from_proof(proof: SumcheckProof<F>) -> Self {
+        Self {
+            proof,
+            sponge: test_sponge(),
+        }
+    }
+
+    pub fn update(&mut self, elements: &[F]) -> F {
         for elem in elements.iter() {
-            sponge.absorb(elem);
+            let bytes = BigInteger::to_bytes_le(&elem.into_bigint());
+            let halo2_base_elem = F2::from_bytes_le(&bytes);
+            self.sponge.update(&[halo2_base_elem]);
         }
         self.proof.values.push(elements.to_vec());
 
-        sponge.squeeze_field_elements::<F>(1)[0]
+        let halo2_out = self.sponge.squeeze();
+        let out = F::from_le_bytes_mod_order(&halo2_out.to_bytes_le());
+        out
     }
 
     pub fn set_claim(&mut self, claimed_value: F) {

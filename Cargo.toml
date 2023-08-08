@@ -13,3 +13,6 @@ ark-std = { version = "0.4.0", features = ["getrandom"] }
 ark-bls12-381 = "0.4"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
+poseidon-native = { git = "https://github.com/scroll-tech/poseidon/", package = "poseidon" }
+halo2-base = { git = "https://github.com/axiom-crypto/halo2-lib", branch = "community-edition" }
+ark-bn254 = "0.4.0"
