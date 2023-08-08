@@ -1,15 +1,16 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, vec};
 
 use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, Absorb, CryptographicSponge};
-use ark_ff::PrimeField;
+use ark_ff::{BigInteger, PrimeField};
 use ark_poly::{
     evaluations::multivariate::{DenseMultilinearExtension, MultilinearExtension},
     SparseMultilinearExtension,
 };
 use halo2_base::utils::ScalarField;
+use poseidon_native::Poseidon;
 
 use super::UniformCircuit;
-use crate::utils::SumcheckProof;
+use crate::utils::{test_sponge, SumcheckProof};
 use crate::{
     oracles::GKROracle,
     parties::{Prover as SumcheckProver, Verifier as SumcheckVerifier},
@@ -25,37 +26,52 @@ pub struct GKRProof<F: PrimeField> {
 /// The prover will feed into the transcript the GKR layer claims, and separately the sumcheck messages, thus creating the `GKRProof`.
 /// The verifier will feed into the transcript the values received in `GKRProof`.
 #[derive(Clone, Debug)]
-pub struct Transcript<F: PrimeField + Absorb> {
+pub struct Transcript<F: PrimeField + Absorb, F2: ScalarField> {
     pub proof: GKRProof<F>,
+    pub sponge: Poseidon<F2, 3, 2>,
 }
 
-impl<F: PrimeField + Absorb> Transcript<F> {
+impl<F: PrimeField + Absorb, F2: ScalarField> Transcript<F, F2> {
     fn new() -> Self {
         Self {
             proof: GKRProof::default(),
+            sponge: test_sponge(),
         }
     }
-    fn update(&mut self, elems: &[F], sponge: &mut PoseidonSponge<F>, n: usize) -> Vec<F> {
+    fn update(&mut self, elems: &[F], n: usize) -> Vec<F> {
         for elem in elems.iter() {
-            sponge.absorb(elem);
+            let bytes = BigInteger::to_bytes_le(&elem.into_bigint());
+            let halo2_base_elem = F2::from_bytes_le(&bytes);
+            self.sponge.update(&[halo2_base_elem]);
         }
         self.proof.values.push(elems.to_vec());
 
-        sponge.squeeze_field_elements::<F>(n)
+        let mut squeezed = vec![];
+        for i in 0..n {
+            let halo2_out = self.sponge.squeeze();
+            let out = F::from_le_bytes_mod_order(&halo2_out.to_bytes_le());
+            squeezed.push(out);
+        }
+        squeezed
+    }
+
+    pub fn new_from_proof(proof: GKRProof<F>) -> Transcript<F, F2> {
+        Self {
+            proof,
+            sponge: test_sponge(),
+        }
     }
 }
 pub struct Prover<F: PrimeField + Absorb, F2: ScalarField, const s: usize> {
     circuit: UniformCircuit<F, s>,
-    sponge: PoseidonSponge<F>,
-    transcript: Transcript<F>,
+    transcript: Transcript<F, F2>,
     phantom: PhantomData<F2>,
 }
 
 impl<F: PrimeField + Absorb, F2: ScalarField, const s: usize> Prover<F, F2, s> {
-    pub fn new(circuit: UniformCircuit<F, s>, sponge: PoseidonSponge<F>) -> Self {
+    pub fn new(circuit: UniformCircuit<F, s>) -> Self {
         Self {
             circuit,
-            sponge,
             transcript: Transcript::new(),
             phantom: PhantomData,
         }
@@ -63,7 +79,7 @@ impl<F: PrimeField + Absorb, F2: ScalarField, const s: usize> Prover<F, F2, s> {
 }
 
 impl<F: PrimeField + Absorb, F2: ScalarField, const s: usize> Prover<F, F2, s> {
-    pub fn run(&mut self, x: Vec<F>) -> Transcript<F> {
+    pub fn run(&mut self, x: Vec<F>) -> GKRProof<F> {
         // number of layers
         let d = self.circuit.layers.len();
 
@@ -73,7 +89,7 @@ impl<F: PrimeField + Absorb, F2: ScalarField, const s: usize> Prover<F, F2, s> {
         // compute all the layers
         let w = self.circuit.evaluate(x);
         // go over the circuit layers in reverse index order for w, since the input layer is at index 0
-        let r_0 = self.transcript.update(&w[d - 1], &mut self.sponge, s);
+        let r_0 = self.transcript.update(&w[d - 1], s);
 
         let mut alpha = F::one();
         let mut beta = F::zero();
@@ -112,9 +128,7 @@ impl<F: PrimeField + Absorb, F2: ScalarField, const s: usize> Prover<F, F2, s> {
             v_i = c_star.to_vec();
 
             // get the random scalars from the verifier to compute the linear combination
-            let temp_scalars = self
-                .transcript
-                .update(&[w_b_star, w_c_star], &mut self.sponge, 2);
+            let temp_scalars = self.transcript.update(&[w_b_star, w_c_star], 2);
 
             alpha = temp_scalars[0];
             beta = temp_scalars[1];
@@ -122,30 +136,23 @@ impl<F: PrimeField + Absorb, F2: ScalarField, const s: usize> Prover<F, F2, s> {
             // add the sumcheck transcript to the GKR transcript
             self.transcript.proof.sumcheck_proofs.push(sumcheck_proof);
         }
-        Transcript {
-            proof: self.transcript.proof.clone(),
-        }
+
+        self.transcript.proof.clone()
     }
 }
 
 pub struct Verifier<F: PrimeField + Absorb, F2: ScalarField, const s: usize> {
     circuit: UniformCircuit<F, s>,
-    sponge: PoseidonSponge<F>,
-    transcript: Transcript<F>,
+    transcript: Transcript<F, F2>,
     phantom: PhantomData<F2>,
 }
 
 // impl run for the verifier
 impl<F: PrimeField + Absorb, F2: ScalarField, const s: usize> Verifier<F, F2, s> {
-    pub fn new(
-        circuit: UniformCircuit<F, s>,
-        sponge: PoseidonSponge<F>,
-        proof: GKRProof<F>,
-    ) -> Self {
+    pub fn new(circuit: UniformCircuit<F, s>, proof: GKRProof<F>) -> Self {
         Self {
             circuit,
-            sponge,
-            transcript: Transcript { proof },
+            transcript: Transcript::new_from_proof(proof),
             phantom: PhantomData,
         }
     }
@@ -155,7 +162,7 @@ impl<F: PrimeField + Absorb, F2: ScalarField, const s: usize> Verifier<F, F2, s>
 
         let claim = self.transcript.proof.values[0].clone();
 
-        let r_0 = self.transcript.update(&claim, &mut self.sponge, s);
+        let r_0 = self.transcript.update(&claim, s);
 
         // verify the transcript
         let mut u_i = r_0.clone();
@@ -189,7 +196,7 @@ impl<F: PrimeField + Absorb, F2: ScalarField, const s: usize> Verifier<F, F2, s>
             u_i = tv1.to_vec();
             v_i = tv2.to_vec();
 
-            let temp_scalars = self.transcript.update(&[w_u_i, w_v_i], &mut self.sponge, 2);
+            let temp_scalars = self.transcript.update(&[w_u_i, w_v_i], 2);
 
             alpha = temp_scalars[0];
             beta = temp_scalars[1];

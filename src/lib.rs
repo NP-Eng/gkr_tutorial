@@ -6,5 +6,4 @@ pub mod parties;
 mod tests;
 mod utils;
 pub use ark_bn254::Fr;
-pub use utils::serialize_proof;
 pub use utils::SumcheckProof;

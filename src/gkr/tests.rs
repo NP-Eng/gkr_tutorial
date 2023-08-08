@@ -68,17 +68,14 @@ mod test {
     #[test]
     fn test_gkr() {
         // Need to use the same sponge, since it's initialized with random values
-        let sponge = test_sponge();
-
-        let mut gkr_prover = Prover::<Fr, Fr2, 2>::new(make_test_circuit(), sponge.clone());
+        let mut gkr_prover = Prover::<Fr, Fr2, 2>::new(make_test_circuit());
         let circuit_input = vec![3, 2, 3, 1]
             .iter()
             .map(|x| Fr::from(*x as u64))
             .collect();
-        let transcript = gkr_prover.run(circuit_input);
+        let proof = gkr_prover.run(circuit_input);
 
-        let mut gkr_verifier =
-            Verifier::<Fr, Fr2, 2>::new(make_test_circuit(), sponge, transcript.proof);
+        let mut gkr_verifier = Verifier::<Fr, Fr2, 2>::new(make_test_circuit(), proof);
         assert!(gkr_verifier.run());
     }
 }
