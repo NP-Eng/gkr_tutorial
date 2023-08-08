@@ -110,7 +110,7 @@ impl<F: PrimeField, MLE: MultilinearExtension<F>> Oracle<F> for CombinedPolyOrac
     }
 }
 
-pub(crate) struct GKROracle<F: PrimeField> {
+pub struct GKROracle<F: PrimeField> {
     sum_of_products: GKRVerifierSumOfProducts<F>,
     g1: Vec<F>,
     g2: Vec<F>,
@@ -119,7 +119,7 @@ pub(crate) struct GKROracle<F: PrimeField> {
 }
 
 impl<F: PrimeField> GKROracle<F> {
-    pub(crate) fn new(
+    pub fn new(
         sum_of_products: GKRVerifierSumOfProducts<F>,
         g1: Vec<F>,
         g2: Vec<F>,

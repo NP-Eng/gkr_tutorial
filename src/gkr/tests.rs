@@ -8,8 +8,10 @@ mod test {
         },
         utils::test_sponge,
     };
-    use ark_bls12_381::Fq;
+    use ark_bn254::Fr;
+
     use ark_crypto_primitives::sponge::Absorb;
+    use halo2_base::halo2_proofs::halo2curves::bn256::Fr as Fr2;
 
     fn make_test_circuit<F: PrimeField + Absorb>() -> UniformCircuit<F, 2> {
         // example from Thaler's book p. 60, bottom - one gate changed for addition
@@ -38,11 +40,11 @@ mod test {
 
     #[test]
     fn simple_circuit() {
-        let circuit = make_test_circuit::<Fq>();
+        let circuit = make_test_circuit::<Fr>();
         let computed_out = circuit.evaluate(
             vec![3, 2, 3, 1]
                 .iter()
-                .map(|x| Fq::from(*x as u64))
+                .map(|x| Fr::from(*x as u64))
                 .collect(),
         );
 
@@ -50,16 +52,16 @@ mod test {
             *computed_out.last().unwrap(),
             vec![36, 12, 18, 18]
                 .iter()
-                .map(|x| Fq::from(*x as u64))
-                .collect::<Vec<Fq>>()
+                .map(|x| Fr::from(*x as u64))
+                .collect::<Vec<Fr>>()
         );
     }
 
     #[test]
     fn layer_to_mles() {
-        let circuit = make_test_circuit::<Fq>();
+        let circuit = make_test_circuit::<Fr>();
         for layer in circuit.layers.iter() {
-            let _: [SparseMultilinearExtension<Fq>; 2] = layer.into();
+            let _: [SparseMultilinearExtension<Fr>; 2] = layer.into();
         }
     }
 
@@ -68,15 +70,15 @@ mod test {
         // Need to use the same sponge, since it's initialized with random values
         let sponge = test_sponge();
 
-        let mut gkr_prover = Prover::<Fq, 2>::new(make_test_circuit(), sponge.clone());
+        let mut gkr_prover = Prover::<Fr, Fr2, 2>::new(make_test_circuit(), sponge.clone());
         let circuit_input = vec![3, 2, 3, 1]
             .iter()
-            .map(|x| Fq::from(*x as u64))
+            .map(|x| Fr::from(*x as u64))
             .collect();
         let transcript = gkr_prover.run(circuit_input);
 
         let mut gkr_verifier =
-            Verifier::<Fq, 2>::new(make_test_circuit(), sponge, transcript.proof);
+            Verifier::<Fr, Fr2, 2>::new(make_test_circuit(), sponge, transcript.proof);
         assert!(gkr_verifier.run());
     }
 }

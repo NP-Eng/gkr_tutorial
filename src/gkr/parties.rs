@@ -1,9 +1,12 @@
+use std::marker::PhantomData;
+
 use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, Absorb, CryptographicSponge};
 use ark_ff::PrimeField;
 use ark_poly::{
     evaluations::multivariate::{DenseMultilinearExtension, MultilinearExtension},
     SparseMultilinearExtension,
 };
+use halo2_base::utils::ScalarField;
 
 use super::UniformCircuit;
 use crate::utils::SumcheckProof;
@@ -41,23 +44,25 @@ impl<F: PrimeField + Absorb> Transcript<F> {
         sponge.squeeze_field_elements::<F>(n)
     }
 }
-pub struct Prover<F: PrimeField + Absorb, const s: usize> {
+pub struct Prover<F: PrimeField + Absorb, F2: ScalarField, const s: usize> {
     circuit: UniformCircuit<F, s>,
     sponge: PoseidonSponge<F>,
     transcript: Transcript<F>,
+    phantom: PhantomData<F2>,
 }
 
-impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
+impl<F: PrimeField + Absorb, F2: ScalarField, const s: usize> Prover<F, F2, s> {
     pub fn new(circuit: UniformCircuit<F, s>, sponge: PoseidonSponge<F>) -> Self {
         Self {
             circuit,
             sponge,
             transcript: Transcript::new(),
+            phantom: PhantomData,
         }
     }
 }
 
-impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
+impl<F: PrimeField + Absorb, F2: ScalarField, const s: usize> Prover<F, F2, s> {
     pub fn run(&mut self, x: Vec<F>) -> Transcript<F> {
         // number of layers
         let d = self.circuit.layers.len();
@@ -92,10 +97,8 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
             let f_i_2 = (add_i_mle, identically_one.clone(), w_iplus1_mle.clone());
             let f_i_3 = (mul_i_mle, w_iplus1_mle.clone(), w_iplus1_mle.clone());
 
-            let mut sumcheck_prover = SumcheckProver::new(
-                vec![f_i_1.into(), f_i_2.into(), f_i_3.into()].into(),
-                self.sponge.clone(),
-            );
+            let mut sumcheck_prover: SumcheckProver<F, F2, DenseMultilinearExtension<F>> =
+                SumcheckProver::new(vec![f_i_1.into(), f_i_2.into(), f_i_3.into()].into());
             let (sumcheck_proof, random_sumcheck_challenges) =
                 sumcheck_prover.run(&u_i, &v_i, alpha, beta);
 
@@ -125,14 +128,15 @@ impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
     }
 }
 
-pub struct Verifier<F: PrimeField + Absorb, const s: usize> {
+pub struct Verifier<F: PrimeField + Absorb, F2: ScalarField, const s: usize> {
     circuit: UniformCircuit<F, s>,
     sponge: PoseidonSponge<F>,
     transcript: Transcript<F>,
+    phantom: PhantomData<F2>,
 }
 
 // impl run for the verifier
-impl<F: PrimeField + Absorb, const s: usize> Verifier<F, s> {
+impl<F: PrimeField + Absorb, F2: ScalarField, const s: usize> Verifier<F, F2, s> {
     pub fn new(
         circuit: UniformCircuit<F, s>,
         sponge: PoseidonSponge<F>,
@@ -142,6 +146,7 @@ impl<F: PrimeField + Absorb, const s: usize> Verifier<F, s> {
             circuit,
             sponge,
             transcript: Transcript { proof },
+            phantom: PhantomData,
         }
     }
 
@@ -171,11 +176,11 @@ impl<F: PrimeField + Absorb, const s: usize> Verifier<F, s> {
             let f_i_3 = (mul_i_mle, w_u_i, w_v_i);
             let sum_of_prods = vec![f_i_1.into(), f_i_2.into(), f_i_3.into()].into();
 
-            let mut sumcheck_verifier = SumcheckVerifier::new(
-                GKROracle::new(sum_of_prods, u_i, v_i, alpha, beta),
-                self.sponge.clone(),
-                self.transcript.proof.sumcheck_proofs[i].clone(),
-            );
+            let mut sumcheck_verifier: SumcheckVerifier<F, F2, GKROracle<F>> =
+                SumcheckVerifier::new(
+                    GKROracle::new(sum_of_prods, u_i, v_i, alpha, beta),
+                    self.transcript.proof.sumcheck_proofs[i].clone(),
+                );
 
             let (result, random_challenges) = sumcheck_verifier.run();
             assert!(result, "sumcheck failed at round {}", i);

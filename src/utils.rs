@@ -220,3 +220,36 @@ fn field_factorial<F: PrimeField>(a: usize) -> F {
     }
     res
 }
+
+// test for conversions between ScalarField and PrimeField
+#[cfg(test)]
+mod tests {
+    use ark_ff::BigInteger;
+
+    #[test]
+    fn test_conversion_ark_to_halo() {
+        use ark_bn254::Fr;
+        use ark_ff::PrimeField;
+
+        use halo2_base::halo2_proofs::halo2curves::bn256::Fr as Fr2;
+        use halo2_base::utils::ScalarField;
+
+        use std::ops::Neg;
+
+        for i in 0u64..10 {
+            let elem = Fr::from(i);
+            let elem2 = Fr2::from(i);
+            let bytes_elem = BigInteger::to_bytes_le(&elem.into_bigint());
+            let bytes_elem2 = elem2.to_bytes_le();
+            assert_eq!(bytes_elem, bytes_elem2);
+        }
+
+        for i in 0u64..10 {
+            let elem = Fr::from(i).neg();
+            let elem2 = -Fr2::from(i);
+            let bytes_elem = BigInteger::to_bytes_le(&elem.into_bigint());
+            let bytes_elem2 = elem2.to_bytes_le();
+            assert_eq!(bytes_elem, bytes_elem2);
+        }
+    }
+}

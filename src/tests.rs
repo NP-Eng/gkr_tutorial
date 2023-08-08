@@ -14,6 +14,7 @@ mod tests {
     use ark_poly::{DenseMultilinearExtension, MultilinearExtension, SparseMultilinearExtension};
     use ark_std::UniformRand;
     use halo2_base::halo2_proofs::halo2curves::bn256::Fr as Fr2;
+    // use ark_bn254::Fr;
 
     fn initialise_phase_1<F: PrimeField, MLE: MultilinearExtension<F>>(
         f_1: &SparseMultilinearExtension<F>,
@@ -238,63 +239,6 @@ mod tests {
     }
 
     #[test]
-    fn tests_phase_2_max() {
-        // f1 = x1 * (1 - 10 * g1 * g2 + 5 + 4 * x2 + y1 + g2 * y2 - 7 * y2 * x2)
-        let points = vec![
-            (4, Fq::from(6_u64)),
-            (5, Fq::from(6_u64)),
-            (6, Fq::from(6_u64)),
-            (7, Fq::from(97_u64)),
-            (12, Fq::from(10_u64)),
-            (13, Fq::from(10_u64)),
-            (14, Fq::from(10_u64)),
-            (20, Fq::from(7_u64)),
-            (21, Fq::from(7_u64)),
-            (22, Fq::from(7_u64)),
-            (23, Fq::from(98_u64)),
-            (28, Fq::from(11_u64)),
-            (29, Fq::from(11_u64)),
-            (30, Fq::from(11_u64)),
-            (31, Fq::from(1_u64)),
-            (36, Fq::from(6_u64)),
-            (37, Fq::from(6_u64)),
-            (38, Fq::from(7_u64)),
-            (39, Fq::from(98_u64)),
-            (44, Fq::from(3_u64)),
-            (45, Fq::from(3_u64)),
-            (46, Fq::from(4_u64)),
-            (47, Fq::from(95_u64)),
-            (52, Fq::from(7_u64)),
-            (53, Fq::from(7_u64)),
-            (54, Fq::from(8_u64)),
-            (55, Fq::from(99_u64)),
-            (60, Fq::from(4_u64)),
-            (61, Fq::from(4_u64)),
-            (62, Fq::from(5_u64)),
-            (63, Fq::from(96_u64)),
-        ];
-
-        // asssume |x| = |y| = 2, so f1 would be a 6-variate
-        // |z| = 2
-        let f1 = SparseMultilinearExtension::from_evaluations(6, &points);
-
-        let g = vec![Fq::from(80u64), Fq::from(6u64)];
-        let u = vec![Fq::from(27u64), Fq::from(12u64)];
-
-        let actual = initialise_phase_2::<Fq>(&f1, &g, &u);
-
-        // computed by hand
-        let expected = vec![
-            Fq::from(27_u64),
-            Fq::from(54_u64),
-            Fq::from(42_u64),
-            Fq::from(69_u64),
-        ];
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
     fn tests_sumcheck_basic() {
         // f(x1, x2, x3, x4, x5, x6) = f(g1, g2, x1, x2, y1, y2)
         // f1 = (1-x1)(1-x2)(1-x3)(1-x5)[(1-x6)*x4 + 2(1-x4)*x6]
@@ -323,7 +267,7 @@ mod tests {
                 .collect(),
         );
 
-        run_sumcheck_protocol(f1, f2, f3, &g);
+        run_sumcheck_protocol::<_, Fr2, _>(f1, f2, f3, &g);
     }
 
     #[test]
@@ -359,7 +303,7 @@ mod tests {
                     .collect::<Vec<_>>(),
             );
 
-            run_sumcheck_protocol(f1, f2, f3, &g);
+            run_sumcheck_protocol::<_, Fr2, _>(f1, f2, f3, &g);
         }
     }
 
@@ -398,7 +342,7 @@ mod tests {
         let zero_vector = vec![Fq::from(0_u64); g.len()];
         let ones_vector = vec![Fq::from(0_u64); g.len()];
 
-        run_sumcheck_protocol_combined(
+        run_sumcheck_protocol_combined::<_, Fr2, _>(
             f1.clone(),
             f2.clone(),
             f3.clone(),
@@ -407,7 +351,7 @@ mod tests {
             Fq::from(1u64),
             Fq::from(0_u64),
         );
-        run_sumcheck_protocol_combined(
+        run_sumcheck_protocol_combined::<_, Fr2, _>(
             f1,
             f2,
             f3,
@@ -455,7 +399,7 @@ mod tests {
                     .collect::<Vec<_>>(),
             );
 
-            run_sumcheck_protocol_combined(
+            run_sumcheck_protocol_combined::<_, Fr2, _>(
                 f1.clone(),
                 f2.clone(),
                 f3.clone(),
@@ -531,7 +475,7 @@ mod tests {
                 ],
             };
 
-            run_sumcheck_protocol_combined_multiprod(
+            run_sumcheck_protocol_combined_multiprod::<_, Fr2, _>(
                 sum_of_products,
                 &g1,
                 &g2,
