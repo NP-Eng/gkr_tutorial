@@ -1,4 +1,3 @@
-
 use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
@@ -14,6 +13,19 @@ pub struct Product<F: PrimeField, MLE: MultilinearExtension<F>>(
     pub MLE,
 );
 
+impl<F: PrimeField, MLE: MultilinearExtension<F>> From<(SparseMultilinearExtension<F>, MLE, MLE)>
+    for Product<F, MLE>
+{
+    fn from(tuple: (SparseMultilinearExtension<F>, MLE, MLE)) -> Self {
+        assert_eq!(
+            tuple.1.num_vars(),
+            tuple.2.num_vars(),
+            "f2 and f3 must have the same number of variables"
+        );
+        Self(tuple.0, tuple.1, tuple.2)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SumOfProducts<F: PrimeField, MLE: MultilinearExtension<F>> {
     // for add:
@@ -21,6 +33,14 @@ pub struct SumOfProducts<F: PrimeField, MLE: MultilinearExtension<F>> {
     // 2nd: [alpha * add(g1, x, y) + beta * add(g2, x, y)] * 1 * f3(y) +
     // 3rd [alpha * mul(g1, x, y) + beta * mul(g2, x, y)] * f2(x) * f3(y)
     pub terms: Vec<Product<F, MLE>>,
+}
+
+impl<F: PrimeField, MLE: MultilinearExtension<F>> From<Vec<Product<F, MLE>>>
+    for SumOfProducts<F, MLE>
+{
+    fn from(terms: Vec<Product<F, MLE>>) -> Self {
+        Self { terms }
+    }
 }
 
 pub struct Prover<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> {
@@ -48,14 +68,14 @@ impl<F: PrimeField, MLE: MultilinearExtension<F>> PolyOracle<F, MLE> {
 
 impl<F: PrimeField, MLE: MultilinearExtension<F>> Oracle<F> for PolyOracle<F, MLE> {
     fn divinate(&self, x: &[F], y: &[F]) -> F {
-        let mut zxy: Vec<F> = Vec::from(self.g.clone());
+        let mut zxy: Vec<F> = self.g.clone();
         zxy.extend(x);
         zxy.extend(y);
 
         let mut sum = F::zero();
 
         for Product(f1, f2, f3) in &self.sum_of_products.terms {
-            sum += f1.evaluate(&zxy).unwrap() * f2.evaluate(&x).unwrap() * f3.evaluate(&y).unwrap()
+            sum += f1.evaluate(&zxy).unwrap() * f2.evaluate(x).unwrap() * f3.evaluate(y).unwrap()
         }
 
         sum
@@ -78,29 +98,41 @@ struct CombinedPolyOracle<F: PrimeField, MLE: MultilinearExtension<F>> {
     g1: Vec<F>,
     g2: Vec<F>,
     alpha: F,
-    beta: F
+    beta: F,
 }
 
 impl<F: PrimeField, MLE: MultilinearExtension<F>> CombinedPolyOracle<F, MLE> {
-    fn new(sum_of_products: SumOfProducts<F, MLE>, g1: Vec<F>, g2: Vec<F>, alpha: F, beta: F) -> Self {
-        Self { sum_of_products, g1, g2, alpha, beta }
+    fn new(
+        sum_of_products: SumOfProducts<F, MLE>,
+        g1: Vec<F>,
+        g2: Vec<F>,
+        alpha: F,
+        beta: F,
+    ) -> Self {
+        Self {
+            sum_of_products,
+            g1,
+            g2,
+            alpha,
+            beta,
+        }
     }
 }
 
 impl<F: PrimeField, MLE: MultilinearExtension<F>> Oracle<F> for CombinedPolyOracle<F, MLE> {
     fn divinate(&self, x: &[F], y: &[F]) -> F {
-
         let mut sums = Vec::new();
 
         for (coeff, g) in vec![(self.alpha, self.g1.clone()), (self.beta, self.g2.clone())] {
-            let mut zxy: Vec<F> = Vec::from(g.clone());
+            let mut zxy: Vec<F> = g.clone();
             zxy.extend(x);
             zxy.extend(y);
 
             let mut sum = F::zero();
 
             for Product(f1, f2, f3) in &self.sum_of_products.terms {
-                sum += f1.evaluate(&zxy).unwrap() * f2.evaluate(&x).unwrap() * f3.evaluate(&y).unwrap()
+                sum +=
+                    f1.evaluate(&zxy).unwrap() * f2.evaluate(x).unwrap() * f3.evaluate(y).unwrap()
             }
 
             sums.push(coeff * sum);
@@ -143,7 +175,7 @@ impl<F: PrimeField> GKROracle<F> {
 
 impl<F: PrimeField> Oracle<F> for GKROracle<F> {
     fn divinate(&self, x: &[F], y: &[F]) -> F {
-        let mut zxy: Vec<F> = Vec::from(self.g.clone());
+        let mut zxy: Vec<F> = self.g.clone();
         zxy.extend(x);
         zxy.extend(y);
 
@@ -174,16 +206,12 @@ pub(crate) fn to_le_indices(v: usize) -> Vec<usize> {
     // preparing index conversion big-endian -> little-endian
     // we do this because `DenseMultilinearExtension::from_evaluations_slice` expects little-endian notation for the evaluation slice
     (0usize..(1 << v))
-        .into_iter()
         .map(|i| i.reverse_bits() >> (usize::BITS as usize - v))
         .collect()
 }
 
 impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
-    pub fn new(
-        sum_of_products: SumOfProducts<F, MLE>,
-        sponge: PoseidonSponge<F>,
-    ) -> Self {
+    pub fn new(sum_of_products: SumOfProducts<F, MLE>, sponge: PoseidonSponge<F>) -> Self {
         Self {
             sum_of_products,
             sponge,
@@ -207,10 +235,9 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
 
         let le_indices = to_le_indices(v);
 
-        
         for i in 1..=v {
             let mut values = vec![F::zero(); 3];
-            
+
             for summand in 0..num_summands {
                 let mut f_values = vec![vec![F::zero(); 1 << (v - 1)]; 3];
                 let mut g_values = vec![vec![F::zero(); 1 << (v - 1)]; 3];
@@ -248,10 +275,10 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
                 let A_g = &mut A_gs[summand];
 
                 for b in 0..(1 << (v - i)) {
-                    A_f[le_indices[b]] =
-                        A_f[le_indices[b]] * (F::one() - r_i) + A_f[le_indices[b + (1 << (v - i))]] * r_i;
-                    A_g[le_indices[b]] =
-                        A_g[le_indices[b]] * (F::one() - r_i) + A_g[le_indices[b + (1 << (v - i))]] * r_i;
+                    A_f[le_indices[b]] = A_f[le_indices[b]] * (F::one() - r_i)
+                        + A_f[le_indices[b + (1 << (v - i))]] * r_i;
+                    A_g[le_indices[b]] = A_g[le_indices[b]] * (F::one() - r_i)
+                        + A_g[le_indices[b + (1 << (v - i))]] * r_i;
                 }
             }
         }
@@ -267,31 +294,31 @@ impl<F: PrimeField + Absorb, MLE: MultilinearExtension<F>> Prover<F, MLE> {
 
         let mut A_hs: Vec<Vec<F>> = Vec::new();
         let mut A_f2s: Vec<Vec<F>> = Vec::new();
-        
+
         // phase 1
         for Product(f1, f2, f3) in self.sum_of_products.terms.iter() {
             // TODO can we share precomputation for the first two products?
-            A_hs.push(initialise_phase_1(&f1, f3, g1, g2, alpha, beta));
+            A_hs.push(initialise_phase_1(f1, f3, g1, g2, alpha, beta));
             A_f2s.push(f2.to_evaluations());
         }
-        
+
         let out = self.sumcheck_prod(&mut A_hs, &mut A_f2s, k);
-        
+
         // the final claim comes from the first run, since the second is summing over a "different" `f1` (with `x` fixed to some random `u`)
         self.transcript.set_claim(out);
-        
+
         // phase 2
         let u = &self.transcript.challenges[..];
-        
-        let mut A_f3s: Vec<Vec<F>> = Vec::new();
+
+        let _A_f3s: Vec<Vec<F>> = Vec::new();
         let mut A_f1s: Vec<Vec<F>> = Vec::new();
         // let f2s_u: Vec<F> = Vec::new();
         let mut A_f3_f2_us: Vec<Vec<F>> = Vec::new();
         for Product(f1, f2, f3) in &self.sum_of_products.terms {
-            let f2_u = f2.evaluate(&u).unwrap();
+            let f2_u = f2.evaluate(u).unwrap();
             let A_f3 = f3.to_evaluations();
-            
-            A_f1s.push(initialise_phase_2::<F>(&f1, g1, g2, &u, alpha, beta));
+
+            A_f1s.push(initialise_phase_2::<F>(f1, g1, g2, u, alpha, beta));
             A_f3_f2_us.push(A_f3.iter().map(|x| *x * f2_u).collect::<Vec<F>>());
         }
 
@@ -363,7 +390,7 @@ impl<F: PrimeField + Absorb, O: Oracle<F>> Verifier<F, O> {
     }
 }
 
-pub(crate) fn old_precompute<F: PrimeField>(vals: &[F]) -> Vec<F> {
+pub(crate) fn _old_precompute<F: PrimeField>(vals: &[F]) -> Vec<F> {
     // TODO since we're cloning the new table, maybe the table sizes can be optimized
     // or keep 2 fixed tables and swap pointers in each iteration
     let n = vals.len();
@@ -475,14 +502,13 @@ pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F
     f3: MLE,
     g: &[F],
 ) {
-
     let simple_sum = SumOfProducts {
         terms: vec![Product(f1, f2, f3)],
     };
-    
+
     let mut prover = Prover::new(simple_sum.clone(), test_sponge());
 
-    let transcript = prover.run(&g, &g, F::one(), F::zero());
+    let transcript = prover.run(g, g, F::one(), F::zero());
 
     let mut verifier = Verifier {
         oracle: PolyOracle::new(simple_sum, g.to_vec()), // TODO: decide if passing & is enough
@@ -493,7 +519,6 @@ pub fn run_sumcheck_protocol<F: PrimeField + Absorb, MLE: MultilinearExtension<F
     assert!(verifier.run());
 }
 
-
 // run the protocol and return true iff the verifier does not abort
 pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearExtension<F>>(
     f1: SparseMultilinearExtension<F>,
@@ -502,25 +527,18 @@ pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearEx
     g1: &[F],
     g2: &[F],
     alpha: F,
-    beta: F
+    beta: F,
 ) {
-
     let simple_sum = SumOfProducts {
         terms: vec![Product(f1, f2, f3)],
     };
-    
+
     let mut prover = Prover::new(simple_sum.clone(), test_sponge());
 
-    let transcript = prover.run(&g1, &g2, alpha, beta);
+    let transcript = prover.run(g1, g2, alpha, beta);
 
     let mut verifier = Verifier {
-        oracle: CombinedPolyOracle::new(
-            simple_sum,
-            g1.to_vec(),
-            g2.to_vec(),
-            alpha,
-            beta
-        ),
+        oracle: CombinedPolyOracle::new(simple_sum, g1.to_vec(), g2.to_vec(), alpha, beta),
         sponge: test_sponge(),
         transcript,
     };
@@ -529,25 +547,22 @@ pub fn run_sumcheck_protocol_combined<F: PrimeField + Absorb, MLE: MultilinearEx
 }
 
 // run the protocol and return true iff the verifier does not abort
-pub fn run_sumcheck_protocol_combined_multiprod<F: PrimeField + Absorb, MLE: MultilinearExtension<F>>(
+pub fn run_sumcheck_protocol_combined_multiprod<
+    F: PrimeField + Absorb,
+    MLE: MultilinearExtension<F>,
+>(
     sum_of_products: SumOfProducts<F, MLE>,
     g1: &[F],
     g2: &[F],
     alpha: F,
-    beta: F
+    beta: F,
 ) {
     let mut prover = Prover::new(sum_of_products.clone(), test_sponge());
 
-    let transcript = prover.run(&g1, &g2, alpha, beta);
+    let transcript = prover.run(g1, g2, alpha, beta);
 
     let mut verifier = Verifier {
-        oracle: CombinedPolyOracle::new(
-            sum_of_products,
-            g1.to_vec(),
-            g2.to_vec(),
-            alpha,
-            beta
-        ),
+        oracle: CombinedPolyOracle::new(sum_of_products, g1.to_vec(), g2.to_vec(), alpha, beta),
         sponge: test_sponge(),
         transcript,
     };

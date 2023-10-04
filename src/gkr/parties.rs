@@ -49,65 +49,93 @@ impl<F: PrimeField + Absorb> Transcript<F> {
         true
     }
 }
-struct Prover<F: PrimeField + Absorb> {
-    circuit: UniformCircuit<F>,
+pub struct Prover<F: PrimeField + Absorb, const s: usize> {
+    circuit: UniformCircuit<F, s>,
     sponge: PoseidonSponge<F>,
     transcript: Transcript<F>,
 }
 
-impl<F: PrimeField + Absorb> Prover<F> {
-    fn run(&mut self, x: Vec<F>) -> Transcript<F> {
-        let k = self.circuit.layers[0].num_vars;
-        let identically_one =
-            DenseMultilinearExtension::from_evaluations_vec(k, vec![F::one(); 1 << k]);
-
-        // compute all the layers
-        let w = self.circuit.evaluate(x);
-        let r_0 = self.transcript.update(w[0].clone(), &mut self.sponge, 1);
-
-        // init random scalars to 1, 1
-        let mut random_scalars = vec![F::one(), F::one()];
-
-        for i in 0..k {
-            let alpha = random_scalars[0];
-            let beta = random_scalars[1];
-
-            let w_iplus1_mle = DenseMultilinearExtension::from_evaluations_vec(k, w[i + 1]);
-
-            let [add_i_mle, mul_i_mle]: [SparseMultilinearExtension<F>; 2] =
-                self.circuit.layers[i + 1].into();
-
-            // TODO multiply by alpha and beta
-            let f_i_1 = (add_i_mle, w_iplus1_mle, identically_one);
-            let f_i_2 = (add_i_mle, identically_one, w_iplus1_mle);
-            let f_i_3 = (mul_i_mle, w_iplus1_mle, w_iplus1_mle);
-
-            let sumcheck_prover = SumcheckProver::new(vec![f_i_1, f_i_2, f_i_3]);
-            let sumcheck_transcript = sumcheck_prover.run(&r_0);
-            // the first half of the transcript is b*, the second is c*
-            let (b_star, c_star) = sumcheck_transcript.challenges.split_at(k / 2);
-
-            let w_b_star = w_iplus1_mle.evaluate(&b_star).unwrap();
-            let w_c_star = w_iplus1_mle.evaluate(&c_star).unwrap();
-
-            // get the random scalars from the verifier to compute the linear combination
-            random_scalars =
-                self.transcript
-                    .update([w_b_star, w_c_star].to_vec(), &mut self.sponge, 2);
+// new prover
+impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
+    pub fn new(circuit: UniformCircuit<F, s>, sponge: PoseidonSponge<F>) -> Self {
+        Self {
+            circuit,
+            sponge,
+            transcript: Transcript::new(),
         }
-        self.transcript
     }
 }
 
-struct Verifier<F: PrimeField + Absorb> {
-    circuit: UniformCircuit<F>,
+impl<F: PrimeField + Absorb, const s: usize> Prover<F, s> {
+    pub fn run(&mut self, x: Vec<F>) -> Transcript<F> {
+        // number of layers
+        let d = self.circuit.layers.len();
+
+        let identically_one =
+            DenseMultilinearExtension::from_evaluations_vec(s, vec![F::one(); 1 << s]);
+
+        // compute all the layers
+        let w = self.circuit.evaluate(x);
+        // TODO provably need to go in reverse index order for w, since the input layer is at index 0
+        let r_0 = self.transcript.update(w[0].clone(), &mut self.sponge, s);
+
+        let mut alpha = F::one();
+        let mut beta = F::zero();
+
+        let mut u_i = r_0.clone();
+        let mut v_i = r_0;
+
+        for i in 0..d {
+            println!("layer {} of {}", i, d);
+            let w_iplus1_mle = DenseMultilinearExtension::from_evaluations_vec(s, w[i].clone());
+
+            let [add_i_mle, mul_i_mle]: [SparseMultilinearExtension<F>; 2] =
+                (&self.circuit.layers[i]).into();
+
+            // TODO lots of cloning here, can we do better?
+            let f_i_1 = (
+                add_i_mle.clone(),
+                w_iplus1_mle.clone(),
+                identically_one.clone(),
+            );
+            let f_i_2 = (add_i_mle, identically_one.clone(), w_iplus1_mle.clone());
+            let f_i_3 = (mul_i_mle, w_iplus1_mle.clone(), w_iplus1_mle.clone());
+
+            let mut sumcheck_prover = SumcheckProver::new(
+                vec![f_i_1.into(), f_i_2.into(), f_i_3.into()].into(),
+                self.sponge.clone(),
+            );
+            let sumcheck_transcript = sumcheck_prover.run(&u_i, &v_i, alpha, beta);
+            // the first half of the transcript is b*, the second is c*
+            let (b_star, c_star) = sumcheck_transcript.challenges.split_at((1 << s) / 2);
+
+            let w_b_star = w_iplus1_mle.evaluate(b_star).unwrap();
+            let w_c_star = w_iplus1_mle.evaluate(c_star).unwrap();
+
+            u_i = b_star.to_vec();
+            v_i = c_star.to_vec();
+
+            // get the random scalars from the verifier to compute the linear combination
+            let temp_scalars =
+                self.transcript
+                    .update([w_b_star, w_c_star].to_vec(), &mut self.sponge, 2);
+
+            alpha = temp_scalars[0];
+            beta = temp_scalars[1];
+        }
+        self.transcript.clone()
+    }
+}
+
+pub struct Verifier<F: PrimeField + Absorb, const s: usize> {
+    circuit: UniformCircuit<F, s>,
     sponge: PoseidonSponge<F>,
     transcript: Transcript<F>,
 }
 
 // impl run for the verifier
-impl<F: PrimeField + Absorb> Verifier<F> {
-    fn run(&mut self) -> bool {
+impl<F: PrimeField + Absorb, const s: usize> Verifier<F, s> {
+    pub fn run(&mut self) -> bool {
         true
     }
 }

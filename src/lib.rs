@@ -1,4 +1,5 @@
-mod gkr;
+#[allow(non_upper_case_globals)]
+pub mod gkr;
 pub mod parties;
 mod tests;
 mod utils;
