@@ -2,7 +2,10 @@
 mod test {
 
     use crate::{
-        gkr::{parties::Prover, *},
+        gkr::{
+            parties::{Prover, Verifier},
+            *,
+        },
         utils::test_sponge,
     };
     use ark_bls12_381::Fq;
@@ -62,11 +65,18 @@ mod test {
 
     #[test]
     fn test_gkr() {
-        let mut gkr_prover = Prover::<Fq, 2>::new(make_test_circuit(), test_sponge());
+        // Need to use the same sponge, since it's initialized with random values
+        let sponge = test_sponge();
+
+        let mut gkr_prover = Prover::<Fq, 2>::new(make_test_circuit(), sponge.clone());
         let circuit_input = vec![3, 2, 3, 1]
             .iter()
             .map(|x| Fq::from(*x as u64))
             .collect();
-        gkr_prover.run(circuit_input);
+        let transcript = gkr_prover.run(circuit_input);
+
+        let mut gkr_verifier =
+            Verifier::<Fq, 2>::new(make_test_circuit(), sponge, transcript.proof);
+        assert!(gkr_verifier.run());
     }
 }

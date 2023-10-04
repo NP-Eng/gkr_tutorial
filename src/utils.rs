@@ -27,19 +27,25 @@ pub(crate) fn test_sponge<F: PrimeField>() -> PoseidonSponge<F> {
     PoseidonSponge::new(&config)
 }
 
+/// `SumcheckProof` can be safely shared with the verifier in full.
+#[derive(Clone, Debug, Default)]
+pub struct SumcheckProof<F: PrimeField> {
+    pub values: Vec<Vec<F>>,
+    pub claim: Option<F>,
+}
+
+/// Each party will instantiate a `Transcript`.
+/// The prover will feed into the transcript the values of the polynomial, thus creating the `SumcheckProof`.
+/// The verifier will feed into the transcript the values received in `SumcheckProof`.
 #[derive(Clone, Debug)]
 pub struct Transcript<F: PrimeField + Absorb> {
-    pub values: Vec<Vec<F>>,
-    pub challenges: Vec<F>,
-    pub claim: Option<F>,
+    pub proof: SumcheckProof<F>,
 }
 
 impl<F: PrimeField + Absorb> Transcript<F> {
     pub fn new() -> Self {
         Self {
-            values: Vec::new(),
-            challenges: Vec::new(),
-            claim: None,
+            proof: SumcheckProof::default(),
         }
     }
 
@@ -47,29 +53,13 @@ impl<F: PrimeField + Absorb> Transcript<F> {
         for elem in elements.iter() {
             sponge.absorb(elem);
         }
-        self.values.push(elements.to_vec());
+        self.proof.values.push(elements.to_vec());
 
-        let r = sponge.squeeze_field_elements::<F>(1)[0];
-        self.challenges.push(r);
-        r
-    }
-
-    pub fn verify(&self, sponge: &mut PoseidonSponge<F>) -> bool {
-        for (msg, h) in self.values.iter().zip(self.challenges.iter()) {
-            for elem in msg.iter() {
-                sponge.absorb(elem);
-            }
-
-            if sponge.squeeze_field_elements::<F>(1)[0] != *h {
-                return false;
-            }
-        }
-
-        true
+        sponge.squeeze_field_elements::<F>(1)[0]
     }
 
     pub fn set_claim(&mut self, claimed_value: F) {
-        self.claim = Some(claimed_value);
+        self.proof.claim = Some(claimed_value);
     }
 }
 
